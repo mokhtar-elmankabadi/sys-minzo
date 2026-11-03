@@ -61,6 +61,7 @@ const IC = {
   io: "M7 3v14M3 7l4-4 4 4M17 21V7M21 17l-4 4-4-4", stock: "M3 21V8l9-5 9 5v13M7 21v-8h10v8M7 17h10",
   users: "M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6zM9 12l2 2 4-4", devices: "M3 4h13v10H3zM7 18h5M9.5 14v4M18 8h3v12h-5v-3",
   pos: "M3 4h18v12H3zM8 20h8M12 16v4M7 8h4M7 12h6", lock: "M6 11h12v10H6zM8 11V7a4 4 0 018 0v4", plus: "M12 5v14M5 12h14",
+  transfers: "M4 7h13l-3-3M20 17H7l3 3", cash: "M2 6h20v12H2zM12 15a3 3 0 100-6 3 3 0 000 6zM6 12h.01M18 12h.01",
   menu: "M3 6h18M3 12h18M3 18h18", moon: "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z", out: "M15 3h5v18h-5M10 17l5-5-5-5M15 12H3"
 };
 const ico = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[k]}"/></svg>`;
@@ -154,7 +155,7 @@ async function tryLogin(p) {
     if (r.error) { pinBuf = ""; if ($("#pinDots")) drawDots();
       const t = r.error === "WRONG_PIN" ? `الرمز غلط — فاضل ${r.left} محاولات قبل القفل.` : r.error === "LOCKED" ? `الجهاز مقفول لحد ${new Date(r.until).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}.` : errText(r.error);
       $("#pErr").textContent = t; return; }
-    S.sess = r; S.idle = Date.now();
+    S.sess = r; S.idle = Date.now(); S.dir = null; S.cash = null; S.tr = null; P.shift = undefined; setTimeout(qFlush, 1500);
     if (r.staff.must_change) return changePin(true);
     await enterApp();
   } catch (e) { $("#pErr").textContent = errText(e); pinBuf = ""; if ($("#pinDots")) drawDots(); }
@@ -198,10 +199,10 @@ const stockOf = (id, loc) => S.stock.filter(s => s.item_id === id && (loc == nul
 /* =====================================================================
    SHELL
    ===================================================================== */
-const NAV = [["التشغيل", ["dash", "stock"]], ["التجارة", ["items", "io"]], ["النظام", ["users", "devices"]]];
-const NAME = { dash: "لوحة التحكم", items: "الأصناف", io: "استيراد الأصناف والأرصدة", stock: "المخزون", users: "الموظفين والرموز", devices: "الأجهزة" };
-const SUB = { dash: "نظرة سريعة على الأصناف والمخزون في كل مكان.", items: "كل صنف بباركوده ووحدته وسعره، ومسلسل وضمان للأجهزة.", io: "استورد الأصناف من Excel أو CSV بأي شكل أعمدة، ومعاها أرصدة أول المدة.", stock: "رصيد كل صنف في المعرضين والمخزن.", users: "ضيف موظفين وحدد دورهم وفرعهم، وادّيهم رمز مؤقت يغيّروه أول دخول.", devices: "اعتمد الأجهزة الجديدة وحدد نوع كل جهاز ومكانه." };
-const allowed = r => ({ dash: can("dash") || can("items"), items: can("items"), io: can("io", "i") && can("items", "a"), stock: can("stock") || can("items"), users: has("users"), devices: has("devices") })[r];
+const NAV = [["التشغيل", ["dash", "pos", "stock", "transfers"]], ["المال", ["cash"]], ["التجارة", ["items", "io"]], ["النظام", ["users", "devices"]]];
+const NAME = { pos: "نقطة البيع", cash: "الخزنة والورديات", transfers: "التحويلات", dash: "لوحة التحكم", items: "الأصناف", io: "استيراد الأصناف والأرصدة", stock: "المخزون", users: "الموظفين والرموز", devices: "الأجهزة" };
+const SUB = { pos: "", cash: "رصيد الأدراج والخزنة، واعتماد تسليم الورديات، وفواتير الأيام الأخيرة وإلغاؤها.", transfers: "نقل البضاعة بين المعرضين والمخزن بطلب واعتماد وشحن واستلام.", dash: "نظرة سريعة على الأصناف والمخزون في كل مكان.", items: "كل صنف بباركوده ووحدته وسعره، ومسلسل وضمان للأجهزة.", io: "استورد الأصناف من Excel أو CSV بأي شكل أعمدة، ومعاها أرصدة أول المدة.", stock: "رصيد كل صنف في المعرضين والمخزن.", users: "ضيف موظفين وحدد دورهم وفرعهم، وادّيهم رمز مؤقت يغيّروه أول دخول.", devices: "اعتمد الأجهزة الجديدة وحدد نوع كل جهاز ومكانه." };
+const allowed = r => ({ pos: can("pos", "a"), cash: can("cash") || can("close"), transfers: can("transfers"), dash: can("dash") || can("items"), items: can("items"), io: can("io", "i") && can("items", "a"), stock: can("stock") || can("items"), users: has("users"), devices: has("devices") })[r];
 
 async function enterApp() {
   $("#gate").hidden = true; $("#app").hidden = false;
@@ -404,6 +405,231 @@ function devModal(d) {
     catch (er) { $("#vErr").innerHTML = `<div class="warnbox">${esc(errText(er))}</div>`; busy(e.target, false); } };
 }
 
+
+/* =====================================================================
+   POINT OF SALE · SHIFTS · CASH · TRANSFERS
+   ===================================================================== */
+const PAYN = { cash: "نقدي", card: "فيزا", insta: "إنستاباي", wallet: "محفظة" };
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
+const P = { cart: [], disc: 0, pin: "", cust: { name: "", phone: "" }, seller: "", pay: { cash: "", card: "", insta: "", wallet: "" }, dep: "all", q: "", shift: undefined, serials: [] };
+const today = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0, 10);
+async function loadDir() { if (!S.dir) S.dir = await rpc("staff_directory", { p_token: T() }); return S.dir; }
+const who = id => ((S.dir || []).find(x => x.id === id) || {}).name || "—";
+
+/* ---------- offline queue: sales are kept on this device and re-sent (the server ignores duplicates) ---------- */
+const QK = "minzo-sale-queue";
+const qGet = () => { try { return JSON.parse(ls(QK) || "[]"); } catch (e) { return []; } };
+const qSet = a => ls(QK, JSON.stringify(a));
+async function qFlush() {
+  if (!T()) return; const a = qGet(); if (!a.length) return; const left = [];
+  for (const x of a) { try { await rpc("sale_post", { p_token: T(), p: x }); } catch (e) { if (/fetch|network/i.test(e.message || "")) left.push(x); else { x._err = errText(e); left.push(x); } } }
+  qSet(left); if (left.length < a.length) { toast(`اتبعت ${a.length - left.length} فاتورة كانت محفوظة على الجهاز.`); await loadItems().catch(() => {}); if (S.route === "pos" || S.route === "cash") render(); }
+}
+addEventListener("online", qFlush); setInterval(qFlush, 30000);
+
+/* ---------- pricing preview (the server re-prices; this is for the screen only) ---------- */
+function cartCalc() {
+  const st = S.store || {}, vatOn = st.vat_registered && st.vat_from && today() >= st.vat_from;
+  let gross = 0, vat = 0;
+  P.cart.forEach(l => { const it = S.items.find(i => i.id === l.id); l.it = it; gross += it.sale_price * l.qty; });
+  const disc = Math.round(gross * P.disc) / 100; let total = gross - disc;
+  if (vatOn) { P.cart.forEach(l => { const r = (l.it.vat_rate != null ? +l.it.vat_rate : +st.vat_rate) / 100, sh = l.it.sale_price * l.qty * (1 - P.disc / 100); vat += st.prices_include_vat ? sh - sh / (1 + r) : sh * r; }); vat = Math.round(vat * 100) / 100; if (!st.prices_include_vat) total += vat; }
+  const paid = Object.values(P.pay).reduce((a, v) => a + (+v || 0), 0);
+  return { gross, disc, vat, total: Math.round(total * 100) / 100, paid, change: paid - total, vatOn, incl: st.prices_include_vat };
+}
+
+V.pos = () => {
+  const d = S.sess.device, loc = d.location_id;
+  let h = header();
+  if (!loc || (S.locs.find(l => l.id === loc) || {}).kind !== "showroom") return h + `<div class="card lux rise" style="text-align:center"><h3 style="justify-content:center">الجهاز ده مش مربوط بمعرض</h3><p class="muted">البيع بيتم من جهاز مربوط بمعرض عشان الدرج والوردية. المالك أو المدير العام يحدد مكان الجهاز من شاشة «الأجهزة».</p>${has("devices") ? `<button class="btn gold" data-go="devices">شاشة الأجهزة</button>` : ""}</div>`;
+  if (P.shift === undefined) { setTimeout(posShift, 0); return h + `<div class="spin"></div>`; }
+  if (S.sess.role.id === "seller") return h + `<div class="card rise"><p class="muted">دور «البائع» بيجهّز الفاتورة ويبعتها للكاشير — الجزء ده جاي في الخطوة الجاية. لحد دلوقتي البيع من حساب الكاشير.</p></div>`;
+  if (!P.shift) return h + `<div class="card lux rise" style="max-width:480px"><h3>مفيش وردية مفتوحة على درج ${esc(locName(loc))}</h3><div class="field"><label>رصيد الدرج في أول الوردية (الفكّة)</label><input class="inp num" id="shFloat" type="number" min="0" value="0"></div><button class="btn gold" style="margin-top:10px" data-act="shOpen">فتح وردية</button></div>`;
+  const q = qGet(), c = cartCalc(), max = +S.sess.role.max_discount_pct || 0;
+  const items = S.items.filter(i => (P.dep === "all" || i.department_id === +P.dep) && (!P.q || norm(i.name + " " + (i.barcode || "") + " " + i.code).includes(norm(P.q))));
+  h = `<div class="ph"><div><div class="eyebrow">${esc(locName(loc))} · وردية ${esc(P.shift.cashier_name)} من ${new Date(P.shift.opened_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</div><h1>${NAME.pos}</h1></div><div class="acts">${q.length ? `<span class="chip warn">${q.length} فاتورة محفوظة على الجهاز</span>` : ""}<button class="btn sm" data-act="shHand">تسليم الوردية</button></div></div>`;
+  h += `<div class="pos"><div class="stack" style="gap:12px;min-width:0">
+   <div class="scan">${ico("items")}<input id="posQ" placeholder="امسح الباركود أو اكتب اسم الصنف" value="${esc(P.q)}" autocomplete="off"></div>
+   <div class="tabs">${[["all", "الكل"], ...S.depts.map(x => [String(x.id), x.name])].map(([k, n]) => `<button data-act="posDep" data-k="${k}" class="${String(P.dep) === k ? "on" : ""}">${esc(n)}</button>`).join("")}</div>
+   <div class="pgrid">${items.slice(0, 120).map(i => { const st = stockOf(i.id, loc); return `<button class="pcard ${st <= 0 ? "out" : ""}" data-act="posAdd" data-id="${i.id}"><b>${esc(i.name)}</b><span class="dim num" style="font-size:11.5px">${esc(i.barcode || i.code)}</span><div class="pr"><span class="num">${fmt(i.sale_price)}</span><span class="chip plain">${num(st)} ${UNITS[i.unit]}</span></div></button>`; }).join("") || `<p class="muted">${S.items.length ? "مفيش نتايج." : "لسه مفيش أصناف."}</p>`}</div></div>
+  <div class="card cart stick"><h3>الفاتورة</h3>${P.cart.length ? P.cart.map((l, n) => { const it = l.it; const sers = P.serials.filter(s => s.item_id === it.id && !P.cart.some((o, m) => m !== n && o.serial === s.serial));
+     return `<div class="cline"><div><div class="nm">${esc(it.name)}</div><span class="dim num" style="font-size:12px">${fmt(it.sale_price, 1)} × ${num(l.qty)} ${UNITS[it.unit]}</span></div><div class="stack" style="gap:6px;align-items:flex-end"><span class="num">${fmt(it.sale_price * l.qty, 1)}</span>${it.serial_required ? `<button class="btn sm ghost" data-act="posDel" data-n="${n}">حذف</button>` : it.unit === "meter" ? `<span class="row" style="gap:4px"><input class="inp num" style="width:80px;padding:4px 8px" type="number" min="0.1" step="0.1" data-mqty="${n}" value="${l.qty}"><button class="btn sm ghost" data-act="posDel" data-n="${n}">✕</button></span>` : `<span class="qty"><button data-act="posQty" data-n="${n}" data-d="-1">−</button><span>${l.qty}</span><button data-act="posQty" data-n="${n}" data-d="1">+</button></span>`}</div>
+     ${it.serial_required ? `<div style="grid-column:1/-1" class="row"><span class="dim" style="font-size:12px">المسلسل</span><select class="inp" style="padding:5px 8px;font-size:12.5px;flex:1" data-ser="${n}"><option value="">— اختار —</option>${sers.map(s => `<option ${l.serial === s.serial ? "selected" : ""}>${esc(s.serial)}</option>`).join("")}</select>${it.warranty_months ? `<span class="chip gold plain">${it.warranty_months} شهر ضمان</span>` : ""}</div>` : ""}
+     ${it.unit === "meter" ? `<div style="grid-column:1/-1" class="row"><span class="dim" style="font-size:12px">فاقد قص (سم) — اختياري</span><input class="inp num" type="number" min="0" style="width:90px;padding:4px 8px" data-waste="${n}" value="${l.waste || ""}"></div>` : ""}</div>`; }).join("") : `<div class="muted" style="padding:24px 0;text-align:center">امسح أول صنف</div>`}
+   ${P.cart.length ? `<div class="stack" style="gap:2px;margin-top:8px"><div class="tot"><span class="muted">الإجمالي</span><span class="num">${fmt(c.gross, 1)}</span></div>
+    <div class="tot"><span class="muted">خصم % <span class="dim">(حدّك ${max}%)</span></span><input class="inp num" style="width:70px;padding:4px 8px" type="number" min="0" max="100" id="posDisc" value="${P.disc}"></div>
+    ${P.disc > max ? `<div class="warnbox">فوق حدّك — اكتب رمز مدير حدّه أعلى: <input class="inp num" type="password" id="posPin" style="margin-top:6px" value="${esc(P.pin)}"></div>` : ""}
+    ${c.disc ? `<div class="tot up"><span>الخصم</span><span class="num">−${fmt(c.disc, 1)}</span></div>` : ""}
+    ${c.vatOn ? `<div class="tot dim"><span>${c.incl ? "منها ضريبة القيمة المضافة" : "ضريبة القيمة المضافة"}</span><span class="num">${fmt(c.vat, 1)}</span></div>` : ""}
+    <div class="tot big"><span>المطلوب</span><span class="num">${fmt(c.total, 1)}</span></div></div>
+   <div class="field"><label>العميل ${P.cart.some(l => l.it.serial_required) ? `<b style="color:var(--warn)">— إجباري للأجهزة</b>` : `<span class="dim">(اختياري)</span>`}</label><div class="row" style="flex-wrap:nowrap"><input class="inp" id="cName" placeholder="الاسم" value="${esc(P.cust.name)}"><input class="inp num" id="cPhone" placeholder="01xxxxxxxxx" value="${esc(P.cust.phone)}" inputmode="tel"></div></div>
+   <div class="field"><label>البائع <span class="dim">(للعمولة)</span></label><select class="inp" id="posSeller"><option value="">— بدون —</option>${(S.dir || []).filter(x => x.active && x.role_id === "seller" && (!x.location_id || x.location_id === loc)).map(x => `<option value="${x.id}" ${P.seller === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>
+   <div class="field"><label>الدفع <button class="btn sm ghost" data-act="payAll" style="margin-inline-start:6px">الكل نقدي</button></label><div class="grid g2" style="gap:6px">${Object.entries(PAYN).map(([k, n]) => `<label class="row" style="gap:6px;flex-wrap:nowrap"><span class="dim" style="width:64px;font-size:12.5px">${n}</span><input class="inp num" type="number" min="0" data-pay="${k}" value="${esc(P.pay[k])}"></label>`).join("")}</div>
+    ${c.paid ? `<div class="tot" style="margin-top:6px"><span class="muted">${c.change >= 0 ? "الباقي للعميل" : "ناقص"}</span><span class="num" style="color:${c.change >= 0 ? "var(--ok)" : "var(--bad)"}">${fmt(Math.abs(c.change), 1)}</span></div>` : ""}</div>
+   <div id="posErr"></div>
+   <div class="row" style="flex-wrap:nowrap"><button class="btn ghost" data-act="posClear">تفريغ</button><button class="btn gold" style="flex:1" data-act="posPay">إتمام البيع · <span class="num">${fmt(c.total, 1)}</span></button></div>` : ""}</div></div>`;
+  return h;
+};
+H.pos = () => {
+  const qi = $("#posQ"); if (!qi) return;
+  qi.focus();
+  qi.oninput = () => { P.q = qi.value; const p = qi.selectionStart; render(); const n = $("#posQ"); n.focus(); n.setSelectionRange(p, p); };
+  qi.onkeydown = e => { if (e.key !== "Enter") return; const v = qi.value.trim(); const it = S.items.find(i => i.barcode === v || i.code === v); if (it) { posAdd(it.id); P.q = ""; render(); } else if (v) toast("مفيش صنف بالباركود ده.", true); };
+  const dsc = $("#posDisc"); if (dsc) dsc.onchange = () => { P.disc = Math.max(0, Math.min(100, +dsc.value || 0)); render(); };
+  const pin = $("#posPin"); if (pin) pin.oninput = () => { P.pin = pin.value; };
+  const cn = $("#cName"), cp = $("#cPhone"); if (cn) { cn.oninput = () => { P.cust.name = cn.value; }; cp.oninput = () => { P.cust.phone = cp.value; }; }
+  const sl = $("#posSeller"); if (sl) sl.onchange = () => { P.seller = sl.value; };
+  document.querySelectorAll("[data-pay]").forEach(x => x.onchange = () => { P.pay[x.dataset.pay] = x.value; render(); });
+  document.querySelectorAll("[data-ser]").forEach(x => x.onchange = () => { P.cart[+x.dataset.ser].serial = x.value; });
+  document.querySelectorAll("[data-mqty]").forEach(x => x.onchange = () => { P.cart[+x.dataset.mqty].qty = Math.max(0.1, +x.value || 0.1); render(); });
+  document.querySelectorAll("[data-waste]").forEach(x => x.onchange = () => { P.cart[+x.dataset.waste].waste = Math.max(0, +x.value || 0); });
+};
+async function posShift() {
+  try { const [sh, ser] = await Promise.all([rpc("shift_current", { p_token: T() }), q("serials", "serial,item_id", x => x.eq("location_id", S.sess.device.location_id).eq("status", "in_stock").limit(5000)), loadDir()]);
+    P.shift = sh; P.serials = ser; } catch (e) { P.shift = null; toast(errText(e), true); }
+  if (S.route === "pos") render();
+}
+function posAdd(id) {
+  const it = S.items.find(i => i.id === id); if (!it) return;
+  if (it.serial_required) { P.cart.push({ id, qty: 1, serial: "" }); return; }
+  const l = P.cart.find(x => x.id === id && !x.serial); if (l) l.qty = +(l.qty + 1).toFixed(3); else P.cart.push({ id, qty: 1 });
+}
+async function posPay(btn) {
+  const c = cartCalc(), err = m => ($("#posErr").innerHTML = `<div class="warnbox">${esc(m)}</div>`);
+  if (P.cart.some(l => l.it.serial_required && !l.serial)) return err("اختار المسلسل لكل جهاز.");
+  if (P.cart.some(l => l.it.serial_required) && (!P.cust.name.trim() || !/^01\d{9}$/.test(P.cust.phone.trim()))) return err("الأجهزة محتاجة اسم العميل وموبايل صحيح.");
+  if (P.cust.phone && !/^01\d{9}$/.test(P.cust.phone.trim())) return err("رقم الموبايل غلط.");
+  if (c.paid < c.total - 0.004) return err("المدفوع أقل من المطلوب.");
+  const nonCash = c.paid - (+P.pay.cash || 0); if (nonCash > c.total + 0.004) return err("الفيزا والمحافظ أكتر من المطلوب — الباقي بيرجع من النقدي بس.");
+  const p = { client_uuid: uuid(), lines: P.cart.map(l => ({ item_id: l.id, qty: l.qty, serial: l.serial || null, cut_waste_m: l.waste || null })), discount_pct: P.disc, approver_pin: P.disc > (+S.sess.role.max_discount_pct || 0) ? P.pin : null,
+    customer: P.cust.phone ? { name: P.cust.name.trim(), phone: P.cust.phone.trim() } : null, seller_id: P.seller || null,
+    payments: Object.entries(P.pay).filter(([, v]) => +v > 0).map(([m, v]) => ({ method: m, amount: +v })) };
+  busy(btn, true);
+  try { const r = await rpc("sale_post", { p_token: T(), p }); posDone(r, c); }
+  catch (e) {
+    if (/fetch|network/i.test(e.message || "")) { const a = qGet(); a.push(p); qSet(a); posDone({ no: "محفوظة على الجهاز", total: c.total, change: c.change, offline: true }, c); }
+    else { err(errText(e)); busy(btn, false); }
+  }
+}
+function posDone(r, c) {
+  const lines = P.cart.map(l => ({ n: l.it.name, q: l.qty, u: UNITS[l.it.unit], p: l.it.sale_price, sn: l.serial }));
+  const pays = Object.entries(P.pay).filter(([, v]) => +v > 0);
+  P.cart = []; P.disc = 0; P.pin = ""; P.cust = { name: "", phone: "" }; P.seller = ""; P.pay = { cash: "", card: "", insta: "", wallet: "" };
+  modal(`<h2>${r.offline ? "اتحفظت على الجهاز" : "تم البيع"}</h2>${r.offline ? `<div class="warnbox">مفيش نت — الفاتورة اتحفظت على الجهاز وهتتبعت لوحدها أول ما النت يرجع.</div>` : ""}
+   <div class="receipt" id="rcpt"><div style="text-align:center;font-family:var(--f-display);font-size:16px">${esc(S.store.name)}</div><div style="text-align:center" class="dim">${esc(locName(S.sess.device.location_id))} · ${new Date().toLocaleString("ar-EG")}</div><div style="text-align:center" class="num">${esc(r.no)}</div><div class="hr" style="margin:8px 0"></div>
+   ${lines.map(x => `<div class="r"><span>${esc(x.n)} × ${num(x.q)}${x.sn ? `<br><span class="dim">SN ${esc(x.sn)}</span>` : ""}</span><span>${fmt(x.p * x.q, 1)}</span></div>`).join("")}
+   ${c.disc ? `<div class="r"><span>خصم</span><span>−${fmt(c.disc, 1)}</span></div>` : ""}${c.vatOn ? `<div class="r"><span>ض.ق.م</span><span>${fmt(r.vat != null ? r.vat : c.vat, 1)}</span></div>` : ""}
+   <div class="hr" style="margin:8px 0"></div><div class="r"><b>الإجمالي</b><b>${fmt(r.total, 1)}</b></div>${pays.map(([k, v]) => `<div class="r"><span>${PAYN[k]}</span><span>${fmt(v, 1)}</span></div>`).join("")}${(r.change || 0) > 0 ? `<div class="r"><span>الباقي</span><span>${fmt(r.change, 1)}</span></div>` : ""}</div>
+   <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn" data-act="rcptPrint">طباعة</button><button class="btn gold" data-act="rcptOk">فاتورة جديدة</button></div>`);
+  loadItems().then(() => { P.shift = undefined; }).catch(() => {});
+}
+function handModal() {
+  const den = [200, 100, 50, 20, 10, 5, 1];
+  modal(`<h2>تسليم الوردية</h2><p class="muted" style="margin:0 0 10px">عدّ الدرج بالفئات واكتب إجمالي الفيزا والإنستاباي والمحافظ من الأجهزة. الفرق بيظهر بعد التسليم.</p><div class="stack">
+   <div class="grid g2" style="gap:6px">${den.map(d => `<label class="row" style="gap:6px;flex-wrap:nowrap"><span class="num" style="width:44px">${d}</span>×<input class="inp num" type="number" min="0" data-den="${d}" value="0"></label>`).join("")}</div>
+   <div class="row between"><span class="muted">إجمالي النقدي المعدود</span><b class="num" id="hTot">0</b></div>
+   <div class="grid g2" style="gap:6px">${["card", "insta", "wallet"].map(k => `<div class="field"><label>${PAYN[k]}</label><input class="inp num" type="number" min="0" data-hp="${k}" value="0"></div>`).join("")}</div>
+   <div class="field"><label>سبب الفرق (إجباري لو فيه فرق)</label><input class="inp" id="hRsn"></div><div id="hErr"></div>
+   <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" data-act="shHandGo">تسليم</button></div></div>`);
+  document.querySelectorAll("[data-den]").forEach(x => x.oninput = () => { $("#hTot").textContent = num([...document.querySelectorAll("[data-den]")].reduce((a, y) => a + (+y.dataset.den) * (+y.value || 0), 0)); });
+}
+async function handGo(btn) {
+  const counted = { den: {}, card: 0, insta: 0, wallet: 0 }; document.querySelectorAll("[data-den]").forEach(x => { counted.den[x.dataset.den] = +x.value || 0; }); document.querySelectorAll("[data-hp]").forEach(x => { counted[x.dataset.hp] = +x.value || 0; });
+  busy(btn, true);
+  try { const r = await rpc("shift_handover", { p_token: T(), p_counted: counted, p_reason: $("#hRsn").value.trim() || null });
+    modal(`<h2>اتسلّمت الوردية</h2><div class="stack"><div class="row between"><span>النقدي المفروض</span><b class="num">${fmt(r.expected, 1)}</b></div><div class="row between"><span>المعدود</span><b class="num">${fmt(r.counted, 1)}</b></div><div class="row between"><span>الفرق</span><b class="num" style="color:${+r.diff < 0 ? "var(--bad)" : +r.diff > 0 ? "var(--warn)" : "var(--ok)"}">${fmt(r.diff, 1)}</b></div><p class="muted">التسليم مستني اعتماد مدير الفرع أو مدير الشيفت من شاشة «الخزنة والورديات».</p><button class="btn gold" data-act="mClose">تمام</button></div>`);
+    P.shift = undefined; render(); }
+  catch (e) { $("#hErr").innerHTML = `<div class="warnbox">${esc(errText(e))}${/REASON/.test(e.message) ? " فيه فرق بين المعدود والمسجّل." : ""}</div>`; busy(btn, false); }
+}
+
+/* ---------- cash & shifts (approvals, today's invoices, balances) ---------- */
+V.cash = () => { let h = header(); const C = S.cash; if (!C) { setTimeout(loadCash, 0); return h + `<div class="spin"></div>`; }
+  const pend = C.shifts.filter(s => s.status === "handed"), canAp = can("close", "p");
+  h += `<div class="grid g4">${C.accts.map((a, i) => `<div class="card kpi rise ${i === 0 ? "lux" : ""}" style="--d:${i}"><div class="lbl">${esc(a.name)}</div><div class="val">${fmt(a.bal)}</div><div class="dim" style="font-size:12px">نقدي</div></div>`).join("")}</div>`;
+  h += `<div class="card rise"><h3>الورديات</h3><div class="tw"><table><thead><tr><th>المكان</th><th>الكاشير</th><th>من</th><th>إلى</th><th class="n">المفروض</th><th class="n">المعدود</th><th class="n">الفرق</th><th>الحالة</th><th></th></tr></thead><tbody>${C.shifts.map(s => `<tr><td>${esc(locName(s.location_id))}</td><td>${esc(who(s.cashier_id))}</td><td class="num dim">${new Date(s.opened_at).toLocaleString("ar-EG")}</td><td class="num dim">${s.closed_at ? new Date(s.closed_at).toLocaleString("ar-EG") : "—"}</td><td class="n">${s.expected_cash != null ? fmt(s.expected_cash, 1) : "—"}</td><td class="n">${s.counted_cash != null ? fmt(s.counted_cash, 1) : "—"}</td><td class="n" style="color:${+s.diff < 0 ? "var(--bad)" : +s.diff > 0 ? "var(--warn)" : ""}">${s.diff != null ? fmt(s.diff, 1) : "—"}${s.diff_reason ? `<br><span class="dim" style="font-size:12px">${esc(s.diff_reason)}</span>` : ""}</td><td><span class="chip ${s.status === "open" ? "info" : s.status === "handed" ? "warn" : "ok"}">${{ open: "مفتوحة", handed: "مستنية اعتماد", approved: "معتمدة" }[s.status]}</span></td><td>${s.status === "handed" && canAp ? `<button class="btn sm gold" data-act="shAppr" data-id="${s.id}">اعتماد</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="9" class="muted">لسه مفيش ورديات.</td></tr>`}</tbody></table></div>${pend.length && !canAp ? `<p class="dim">في ${pend.length} تسليم مستني اعتماد مدير.</p>` : ""}</div>`;
+  h += `<div class="card rise"><h3>فواتير آخر ٣ أيام</h3><div class="tw"><table><thead><tr><th>الفاتورة</th><th>المكان</th><th>الكاشير</th><th>الوقت</th><th class="n">الإجمالي</th>${seeCost() ? `<th class="n">الربح</th>` : ""}<th>الحالة</th><th></th></tr></thead><tbody>${C.sales.map(x => `<tr><td class="num">${esc(x.no)}</td><td>${esc(locName(x.location_id))}</td><td>${esc(who(x.cashier_id))}</td><td class="num dim">${new Date(x.created_at).toLocaleString("ar-EG")}</td><td class="n">${fmt(x.total, 1)}</td>${seeCost() ? `<td class="n">${fmt(x.total - x.vat - x.cost, 1)}</td>` : ""}<td>${x.status === "void" ? `<span class="chip bad">ملغاة</span><br><span class="dim" style="font-size:12px">${esc(x.void_reason || "")}</span>` : `<span class="chip ok">سارية</span>`}</td><td>${x.status === "posted" && (["owner", "gm"].includes(S.sess.role.id) || has("voidInvoice") || has("voidRequest")) ? `<button class="btn sm ghost" data-act="saleVoid" data-id="${x.id}" data-no="${esc(x.no)}">إلغاء</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">لسه مفيش فواتير.</td></tr>`}</tbody></table></div></div>`;
+  return h; };
+async function loadCash() {
+  try { await loadDir(); const since = new Date(Date.now() - 3 * 864e5).toISOString();
+    const [accts, moves, shifts, sales] = await Promise.all([q("cash_accounts", "*", x => x.order("id")), q("cash_moves", "account_id,amount,method", x => x.eq("method", "cash").limit(50000)), q("shifts", "*", x => x.order("opened_at", { ascending: false }).limit(60)), q("sales", "*", x => x.gte("created_at", since).order("created_at", { ascending: false }).limit(300))]);
+    accts.forEach(a => { a.bal = moves.filter(m => m.account_id === a.id).reduce((s, m) => s + +m.amount, 0); });
+    S.cash = { accts, shifts, sales }; if (S.route === "cash") render(); } catch (e) { toast(errText(e), true); }
+}
+function apprModal(s) {
+  modal(`<h2>اعتماد تسليم الوردية</h2><div class="stack"><div class="row between"><span>الكاشير</span><b>${esc(who(s.cashier_id))}</b></div><div class="row between"><span>المعدود</span><b class="num">${fmt(s.counted_cash, 1)}</b></div><div class="row between"><span>الفرق</span><b class="num">${fmt(s.diff, 1)}</b></div>
+   <div class="field"><label>توريد للخزنة الرئيسية من الدرج (والباقي يفضل فكّة)</label><input class="inp num" id="aTr" type="number" min="0" max="${s.counted_cash}" value="${Math.max(0, (+s.counted_cash || 0) - (+s.opening_float || 0))}"></div><div id="aErr"></div>
+   <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" data-act="shApprGo" data-id="${s.id}">اعتماد</button></div></div>`);
+}
+function voidModal(id, no) {
+  const direct = ["owner", "gm"].includes(S.sess.role.id) || has("voidInvoice");
+  modal(`<h2>إلغاء الفاتورة ${esc(no)}</h2><p class="muted">البضاعة هترجع المخزون بتكلفتها، والمسلسلات ترجع متاحة، والمبلغ يتسجّل مرتجع على الدرج. الفاتورة الأصلية بتفضل ظاهرة كملغاة.</p><div class="stack">
+   <div class="field"><label>السبب</label><input class="inp" id="vRsn"></div>${direct ? "" : `<div class="field"><label>رمز المدير العام أو المالك للموافقة</label><input class="inp num" type="password" id="vPin"></div>`}<div id="vErr"></div>
+   <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">رجوع</button><button class="btn danger" data-act="saleVoidGo" data-id="${id}">إلغاء الفاتورة</button></div></div>`);
+}
+
+/* ---------- transfers ---------- */
+const TST = { requested: ["مطلوب", "info"], approved: ["معتمد", "gold"], shipped: ["في الطريق", "warn"], received: ["اتستلم", "ok"], cancelled: ["ملغي", "plain"] };
+const myLoc = l => S.sess.role.scope_all_locations || !S.sess.staff.location_id || S.sess.staff.location_id === l;
+V.transfers = () => { let h = header(can("transfers", "a") ? `<button class="btn gold" data-act="trNew">${ico("plus")} طلب تحويل</button>` : ""); const L = S.tr; if (!L) { setTimeout(loadTr, 0); return h + `<div class="spin"></div>`; }
+  h += `<div class="tw rise"><table><thead><tr><th>الرقم</th><th>من</th><th>إلى</th><th>الأصناف</th><th>الحالة</th><th>بواسطة</th><th></th></tr></thead><tbody>${L.map(t => { const st = TST[t.status]; let act = "";
+    if (t.status === "requested" && can("transfers", "p") && myLoc(t.from_location)) act = `<button class="btn sm gold" data-act="trAppr" data-id="${t.id}">اعتماد</button>`;
+    else if (t.status === "approved" && can("transfers", "a") && myLoc(t.from_location)) act = `<button class="btn sm gold" data-act="trShip" data-id="${t.id}">شحن</button>`;
+    else if (t.status === "shipped" && can("transfers", "a") && myLoc(t.to_location)) act = `<button class="btn sm gold" data-act="trRecv" data-id="${t.id}">استلام</button>`;
+    return `<tr><td class="num">${esc(t.no)}<br><span class="dim" style="font-size:12px">${new Date(t.created_at).toLocaleString("ar-EG")}</span></td><td>${esc(locName(t.from_location))}</td><td>${esc(locName(t.to_location))}</td><td>${t.lines.map(l => `${esc((S.items.find(i => i.id === l.item_id) || {}).name || "—")} × ${num(l.qty)}${l.qty_received != null && +l.qty_received !== +l.qty ? ` <span style="color:var(--bad)">(وصل ${num(l.qty_received)})</span>` : ""}`).join("<br>")}${t.note ? `<br><span class="dim" style="font-size:12px">${esc(t.note)}</span>` : ""}</td><td><span class="chip ${st[1]}">${st[0]}</span></td><td>${esc(who(t.requested_by))}</td><td>${act}</td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">لسه مفيش تحويلات.</td></tr>`}</tbody></table></div>
+  <div class="okbox rise">التحويل بيمشي: طلب ← اعتماد من مكان الإرسال ← شحن (البضاعة بتخرج بتكلفتها) ← استلام في المكان التاني (بنفس التكلفة). لو وصل أقل، العجز بيتسجّل بسبب.</div>`;
+  return h; };
+async function loadTr() { try { await loadDir(); const [t, l] = await Promise.all([q("transfers", "*", x => x.order("created_at", { ascending: false }).limit(200)), q("transfer_lines", "*", x => x.limit(5000))]); t.forEach(x => x.lines = l.filter(y => y.transfer_id === x.id)); S.tr = t; if (S.route === "transfers") render(); } catch (e) { toast(errText(e), true); } }
+function trNewModal() {
+  S.trd = { from: S.locs.find(l => l.kind === "warehouse") ? S.locs.find(l => l.kind === "warehouse").id : S.locs[0].id, to: S.sess.staff.location_id || S.locs[0].id, lines: [], note: "" }; trDraw();
+}
+async function trDraw() {
+  const d = S.trd; if (!d.ser || d.serFrom !== d.from) { d.ser = await q("serials", "serial,item_id", x => x.eq("location_id", d.from).eq("status", "in_stock").limit(5000)).catch(() => []); d.serFrom = d.from; }
+  modal(`<h2>طلب تحويل</h2><div class="stack" style="margin-top:10px"><div class="grid g2"><div class="field"><label>من</label><select class="inp" id="tFrom">${S.locs.map(l => `<option value="${l.id}" ${d.from === l.id ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></div><div class="field"><label>إلى</label><select class="inp" id="tTo">${S.locs.map(l => `<option value="${l.id}" ${d.to === l.id ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></div></div>
+   <div class="row" style="gap:6px;flex-wrap:nowrap"><select class="inp" id="tItem" style="flex:2">${S.items.filter(i => stockOf(i.id, d.from) > 0).map(i => `<option value="${i.id}">${esc(i.name)} — متاح ${num(stockOf(i.id, d.from))}</option>`).join("")}</select><input class="inp num" id="tQty" type="number" min="0.1" step="any" value="1" style="width:80px"><button class="btn sm" data-act="trAddLine">${ico("plus")}</button></div>
+   ${d.lines.map((l, n) => { const it = S.items.find(i => i.id === l.item_id); return `<div class="row between" style="border-bottom:1px solid var(--line);padding:6px 0"><span>${esc(it.name)} × <b class="num">${num(l.qty)}</b>${it.serial_required ? `<br><select class="inp" multiple size="3" data-trser="${n}" style="margin-top:4px">${d.ser.filter(s => s.item_id === it.id).map(s => `<option ${(l.serials || []).includes(s.serial) ? "selected" : ""}>${esc(s.serial)}</option>`).join("")}</select><span class="dim" style="font-size:12px">اختار ${num(l.qty)} مسلسل (Ctrl للاختيار المتعدد)</span>` : ""}</span><button class="btn sm ghost" data-act="trDelLine" data-n="${n}">✕</button></div>`; }).join("")}
+   <div class="field"><label>ملاحظة</label><input class="inp" id="tNote" value="${esc(d.note)}"></div><div id="tErr"></div>
+   <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" data-act="trSave">إرسال الطلب</button></div></div>`);
+  $("#tFrom").onchange = e => { d.from = +e.target.value; d.lines = []; trDraw(); }; $("#tTo").onchange = e => { d.to = +e.target.value; }; $("#tNote").oninput = e => { d.note = e.target.value; };
+  document.querySelectorAll("[data-trser]").forEach(x => x.onchange = () => { d.lines[+x.dataset.trser].serials = [...x.selectedOptions].map(o => o.value); });
+}
+function trRecvModal(t) {
+  modal(`<h2>استلام ${esc(t.no)}</h2><p class="muted">اكتب الكمية اللي وصلت فعلًا لكل صنف.</p><div class="stack">${t.lines.map(l => `<div class="row between"><span>${esc((S.items.find(i => i.id === l.item_id) || {}).name || "—")} <span class="dim">(اتشحن ${num(l.qty)})</span></span><input class="inp num" type="number" min="0" max="${l.qty}" step="any" data-rcv="${l.item_id}" value="${l.qty}" style="width:90px"></div>`).join("")}
+   <div class="field"><label>سبب العجز (لو فيه)</label><input class="inp" id="rRsn"></div><div id="rErr"></div>
+   <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" data-act="trRecvGo" data-id="${t.id}">تأكيد الاستلام</button></div></div>`);
+}
+async function opsClick(k, a) {
+  const wrap = async (fn, after) => { busy(a, true); try { await fn(); if (after) await after(); } catch (e) { toast(errText(e), true); busy(a, false); } };
+  if (k === "posDep") { P.dep = a.dataset.k; render(); }
+  else if (k === "posAdd") { posAdd(a.dataset.id); render(); }
+  else if (k === "posQty") { const l = P.cart[+a.dataset.n]; l.qty += +a.dataset.d; if (l.qty <= 0) P.cart.splice(+a.dataset.n, 1); render(); }
+  else if (k === "posDel") { P.cart.splice(+a.dataset.n, 1); render(); }
+  else if (k === "posClear") { P.cart = []; P.disc = 0; P.pay = { cash: "", card: "", insta: "", wallet: "" }; render(); }
+  else if (k === "payAll") { const c = cartCalc(); P.pay = { cash: String(c.total), card: "", insta: "", wallet: "" }; render(); }
+  else if (k === "posPay") posPay(a);
+  else if (k === "rcptPrint") { const w = window.open("", "_blank", "width=380,height=600"); if (!w) return toast("المتصفح منع نافذة الطباعة.", true); w.document.write(`<html dir="rtl"><head><title>إيصال</title><style>body{font-family:Tahoma,Arial;font-size:12px;width:72mm;margin:0 auto}.r{display:flex;justify-content:space-between;gap:8px;margin:3px 0}.dim{color:#666}.hr{border-top:1px dashed #000}</style></head><body>${$("#rcpt").innerHTML}<script>print();setTimeout(()=>close(),500)<\/script></body></html>`); w.document.close(); }
+  else if (k === "rcptOk") { closeModal(); render(); }
+  else if (k === "shOpen") wrap(() => rpc("shift_open", { p_token: T(), p_float: +$("#shFloat").value || 0 }), async () => { P.shift = undefined; toast("الوردية اتفتحت."); render(); });
+  else if (k === "shHand") handModal();
+  else if (k === "shHandGo") handGo(a);
+  else if (k === "shAppr") apprModal(S.cash.shifts.find(s => s.id === a.dataset.id));
+  else if (k === "shApprGo") wrap(() => rpc("shift_approve", { p_token: T(), p_shift: a.dataset.id, p_to_treasury: +$("#aTr").value || 0 }), async () => { closeModal(); toast("اتعتمد."); S.cash = null; render(); });
+  else if (k === "saleVoid") voidModal(a.dataset.id, a.dataset.no);
+  else if (k === "saleVoidGo") wrap(() => rpc("sale_void", { p_token: T(), p_sale: a.dataset.id, p_reason: $("#vRsn").value.trim(), p_approver_pin: ($("#vPin") || {}).value || null }), async () => { closeModal(); toast("الفاتورة اتلغت."); S.cash = null; await loadItems(); render(); });
+  else if (k === "trNew") trNewModal();
+  else if (k === "trAddLine") { const id = $("#tItem").value, qy = +$("#tQty").value; if (!id || !(qy > 0)) return; if (qy > stockOf(id, S.trd.from)) return toast("الكمية أكتر من المتاح.", true); const it = S.items.find(i => i.id === id); if (it.serial_required && qy % 1) return toast("الأجهزة بالعدد.", true); const ex = S.trd.lines.find(l => l.item_id === id); if (ex) ex.qty += qy; else S.trd.lines.push({ item_id: id, qty: qy, serials: [] }); trDraw(); }
+  else if (k === "trDelLine") { S.trd.lines.splice(+a.dataset.n, 1); trDraw(); }
+  else if (k === "trSave") { const d = S.trd; if (d.from === d.to) return ($("#tErr").innerHTML = `<div class="warnbox">اختار مكانين مختلفين.</div>`); if (!d.lines.length) return ($("#tErr").innerHTML = `<div class="warnbox">ضيف صنف.</div>`);
+    for (const l of d.lines) { const it = S.items.find(i => i.id === l.item_id); if (it.serial_required && (l.serials || []).length !== l.qty) return ($("#tErr").innerHTML = `<div class="warnbox">اختار ${num(l.qty)} مسلسل لـ ${esc(it.name)}.</div>`); }
+    wrap(() => rpc("transfer_create", { p_token: T(), p_from: d.from, p_to: d.to, p_lines: d.lines.map(l => { const it = S.items.find(i => i.id === l.item_id); return it.serial_required ? { item_id: l.item_id, qty: l.qty, serials: l.serials } : { item_id: l.item_id, qty: l.qty }; }), p_note: d.note || null }), async () => { closeModal(); toast("الطلب اتبعت."); S.tr = null; render(); }); }
+  else if (k === "trAppr") wrap(() => rpc("transfer_approve", { p_token: T(), p_id: a.dataset.id }), async () => { toast("اتعتمد."); S.tr = null; render(); });
+  else if (k === "trShip") wrap(() => rpc("transfer_ship", { p_token: T(), p_id: a.dataset.id }), async () => { toast("اتشحن — البضاعة خرجت من المكان."); S.tr = null; await loadItems(); render(); });
+  else if (k === "trRecv") trRecvModal(S.tr.find(t => t.id === a.dataset.id));
+  else if (k === "trRecvGo") { const rec = {}; document.querySelectorAll("[data-rcv]").forEach(x => { rec[x.dataset.rcv] = +x.value; }); wrap(() => rpc("transfer_receive", { p_token: T(), p_id: a.dataset.id, p_received: rec, p_reason: $("#rRsn").value.trim() || null }), async () => { closeModal(); toast("اتستلم."); S.tr = null; await loadItems(); render(); }); }
+  else if (k === "mClose") closeModal();
+  else return false;
+  return true;
+}
+
 /* =====================================================================
    EVENTS
    ===================================================================== */
@@ -422,6 +648,7 @@ document.addEventListener("click", e => {
   else if (k === "staffNew") staffModal(null);
   else if (k === "staffEdit") staffModal(S.staffList.find(u => u.id === a.dataset.id));
   else if (k === "devEdit") devModal(S.devList.find(d => d.id === a.dataset.id));
+  else opsClick(k, a);
 });
 { const t = ls("minzo-theme"); if (t) document.documentElement.dataset.theme = t; }
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});

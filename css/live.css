@@ -21,3 +21,5 @@
 .maprow b{font-weight:500;font-size:13px}
 .maprow .req{color:var(--warn)}
 .errlist li{margin:2px 0}
+.grid.g4{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.pcard{text-align:start;font:inherit;color:inherit}

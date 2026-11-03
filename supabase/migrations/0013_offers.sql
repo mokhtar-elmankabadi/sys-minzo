@@ -401,3 +401,4 @@ end $$;
 revoke execute on function public._offer_live(public.offers,smallint,timestamptz), public._offer_hits(public.offers,uuid,int,int), public._offer_price(jsonb,smallint,timestamptz),
   public._offer_overlap(public.offers), public._offer_margins(public.offers) from public, anon, authenticated;
 grant execute on function public.offers_preview(text,jsonb), public.offer_save(text,jsonb), public.offer_set_status(text,int,text) to authenticated;
+alter function public._offer_hits(public.offers, uuid, int, int) set search_path = public;

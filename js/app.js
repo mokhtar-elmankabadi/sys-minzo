@@ -31,6 +31,9 @@ const ERR = {
   PRICE_DIFF: "السعر مختلف كتير عن آخر سعر — اختار السبب", SERIALS_REQUIRED: "عدد المسلسلات لازم يساوي الكمية", SERIAL_EXISTS: "المسلسل ده متسجّل قبل كده", SUPPLIER_REQUIRED: "اختار المورد.",
   MORE_THAN_BALANCE: "المبلغ أكتر من رصيد المورد", NEEDS_OWNER: "المبلغ فوق حدّك — محتاج رمز المالك", CHEQUE_DETAILS: "الشيك محتاج رقم وتاريخ.", NO_REPLACEMENT_IN_STOCK: "مفيش جهاز بديل في المخزون — اختار «نستلم ونبعته».",
   SOLD_DATE_REQUIRED: "اكتب تاريخ البيع.", PROBLEM_REQUIRED: "اكتب العطل.", BAD_STATUS: "الحالة مش مسموح تتغيّر كده.", EMPTY_INVOICE: "ضيف صنف.", BAD_AMOUNT: "المبلغ غلط.",
+  OFFER_OVERLAP: "فيه عرض تاني شغّال بنفس الأولوية على نفس الأصناف في نفس الوقت", BELOW_COST_NEEDS_OWNER: "العرض بيبيع تحت التكلفة — محتاج المالك أو المدير العام.", OFFER_TARGET_REQUIRED: "اختار الأصناف أو المجموعات أو الأقسام اللي عليها العرض.", BUNDLE_NEEDS_ITEMS: "الطقم محتاج صنفين على الأقل وسعر.", GIFT_REQUIRED: "اختار الهدية.", BAD_DATES: "المواعيد غلط — النهاية لازم بعد البداية.", BAD_OFFER: "نوع العرض مش مناسب للاختيار ده.",
+  NOT_BALANCED: "القيد مش متوازن — المدين لازم يساوي الدائن.", LINE_BOTH_SIDES: "السطر الواحد يا مدين يا دائن.", NOT_LEAF_ACCOUNT: "اختار حساب فرعي مش مجموعة.", PERIOD_CLOSED: "الشهر ده مقفول.", MEMO_REQUIRED: "اكتب البيان.", CANNOT_APPROVE_OWN: "مينفعش تعتمد قيد إنت اللي كتبته.", ONLY_OWNER: "المالك بس اللي يعمل ده.", YEAR_CLOSED: "السنة دي مقفولة.", BAD_RIN: "رقم التسجيل الضريبي ٩ أرقام.", VAT_FROM_REQUIRED: "حدد تاريخ بداية الضريبة.",
+  BAD_QTY: "الكمية غلط.", DISCOUNT_NEEDS_APPROVAL: "الخصم فوق حدّك — محتاج رمز مدير.", OVERPAID_NON_CASH: "الفيزا والمحافظ أكتر من المطلوب.", BAD_DISCOUNT: "الخصم غلط.", NOT_FOUND: "مش موجود.",
   CANNOT_DISABLE_OWN_DEVICE: "مينفعش توقف الجهاز اللي شغال عليه.", NOT_SET_UP: "النظام لسه ما اتهيّأش."
 };
 function errText(e) {
@@ -41,7 +44,7 @@ function errText(e) {
   if (/Anonymous sign-ins are disabled/i.test(m)) return "تسجيل الأجهزة مقفول في Supabase — لازم يتفعّل «Anonymous sign-ins».";
   const k = m.split(":")[0].trim();
   if (k.startsWith("NOT_ALLOWED")) return "مش مسموح لدورك.";
-  if (ERR[k] && m.includes(":") && ["INSUFFICIENT_STOCK", "SERIAL_NOT_AVAILABLE", "PRICE_DIFF", "SERIALS_REQUIRED", "SERIAL_EXISTS", "MORE_THAN_BALANCE", "NEEDS_OWNER"].includes(k)) return ERR[k] + ": " + m.split(":").slice(1).join(":");
+  if (ERR[k] && m.includes(":") && ["OFFER_OVERLAP", "INSUFFICIENT_STOCK", "SERIAL_NOT_AVAILABLE", "PRICE_DIFF", "SERIALS_REQUIRED", "SERIAL_EXISTS", "MORE_THAN_BALANCE", "NEEDS_OWNER"].includes(k)) return ERR[k] + ": " + m.split(":").slice(1).join(":");
   return ERR[k] || m;
 }
 async function rpc(fn, args) {
@@ -71,6 +74,7 @@ const IC = {
   pos: "M3 4h18v12H3zM8 20h8M12 16v4M7 8h4M7 12h6", lock: "M6 11h12v10H6zM8 11V7a4 4 0 018 0v4", plus: "M12 5v14M5 12h14",
   transfers: "M4 7h13l-3-3M20 17H7l3 3", cash: "M2 6h20v12H2zM12 15a3 3 0 100-6 3 3 0 000 6zM6 12h.01M18 12h.01",
   inst: "M3 6h18v12H3zM3 10h18M7 15h3M14 15h3", suppliers: "M1 4h14v12H1zM15 8h4l3 3v5h-7M5.5 19a2 2 0 100-.01M18.5 19a2 2 0 100-.01", svc: "M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z",
+  gl: "M4 4h16v16H4zM4 9h16M9 9v11M14 13h3M14 16h3", commission: "M12 2v20M17 6H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", offers: "M20 12l-8 8-9-9V3h8zM7.5 7.5h.01", settings: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z",
   menu: "M3 6h18M3 12h18M3 18h18", moon: "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z", out: "M15 3h5v18h-5M10 17l5-5-5-5M15 12H3"
 };
 const ico = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[k]}"/></svg>`;
@@ -208,10 +212,10 @@ const stockOf = (id, loc) => S.stock.filter(s => s.item_id === id && (loc == nul
 /* =====================================================================
    SHELL
    ===================================================================== */
-const NAV = [["التشغيل", ["dash", "pos", "stock", "transfers", "svc"]], ["المال", ["cash", "inst"]], ["التجارة", ["items", "io", "suppliers"]], ["النظام", ["users", "devices"]]];
-const NAME = { suppliers: "الموردين والمشتريات", svc: "الضمان والصيانة", inst: "شركات التقسيط", pos: "نقطة البيع", cash: "الخزنة والورديات", transfers: "التحويلات", dash: "لوحة التحكم", items: "الأصناف", io: "استيراد الأصناف والأرصدة", stock: "المخزون", users: "الموظفين والرموز", devices: "الأجهزة" };
-const SUB = { suppliers: "الموردين وكشوف حساباتهم، وفواتير الشراء اللي بتدخل البضاعة للمخزون بتكلفتها، والسداد.", svc: "تذاكر الضمان بالمسلسل: توجيه للتوكيل، أو استلام ومتابعة، أو استبدال فوري ومطالبة المورد — حسب قواعد كل ماركة.", inst: "البيع بالتقسيط عن طريق ValU وأمان وكونتكت وغيرهم: الخطط، ومين بيشيل العمولة، والمستحق عند كل شركة لحد ما تحوّل.", pos: "", cash: "رصيد الأدراج والخزنة، واعتماد تسليم الورديات، وفواتير الأيام الأخيرة وإلغاؤها.", transfers: "نقل البضاعة بين المعرضين والمخزن بطلب واعتماد وشحن واستلام.", dash: "نظرة سريعة على الأصناف والمخزون في كل مكان.", items: "كل صنف بباركوده ووحدته وسعره، ومسلسل وضمان للأجهزة.", io: "استورد الأصناف من Excel أو CSV بأي شكل أعمدة، ومعاها أرصدة أول المدة.", stock: "رصيد كل صنف في المعرضين والمخزن.", users: "ضيف موظفين وحدد دورهم وفرعهم، وادّيهم رمز مؤقت يغيّروه أول دخول.", devices: "اعتمد الأجهزة الجديدة وحدد نوع كل جهاز ومكانه." };
-const allowed = r => ({ suppliers: can("suppliers") || can("stock", "a"), svc: can("svc"), inst: can("inst") || ["owner", "gm"].includes(S.sess.role.id), pos: can("pos", "a"), cash: can("cash") || can("close"), transfers: can("transfers"), dash: can("dash") || can("items"), items: can("items"), io: can("io", "i") && can("items", "a"), stock: can("stock") || can("items"), users: has("users"), devices: has("devices") })[r];
+const NAV = [["التشغيل", ["dash", "pos", "stock", "transfers", "svc"]], ["المال", ["cash", "inst", "gl", "commission"]], ["التجارة", ["items", "io", "suppliers", "offers"]], ["النظام", ["users", "devices", "settings"]]];
+const NAME = { gl: "الحسابات العامة", commission: "عمولات البائعين", offers: "العروض والخصومات", settings: "الإعدادات والضريبة", suppliers: "الموردين والمشتريات", svc: "الضمان والصيانة", inst: "شركات التقسيط", pos: "نقطة البيع", cash: "الخزنة والورديات", transfers: "التحويلات", dash: "لوحة التحكم", items: "الأصناف", io: "استيراد الأصناف والأرصدة", stock: "المخزون", users: "الموظفين والرموز", devices: "الأجهزة" };
+const SUB = { gl: "القيود بتتعمل لوحدها من كل بيع وشراء وحركة خزنة ومخزون — ومعاها ميزان المراجعة وقائمة الدخل والمركز المالي.", commission: "عمولة كل بائع على صافي مبيعاته حسب القسم أو المجموعة أو الصنف، وشرايح التارجت الشهري.", offers: "خصومات وعروض بتتطبّق لوحدها على الكاشير، بأولوية ومن غير تجميع، ومع فحص الهامش قبل الحفظ.", settings: "بيانات المحل ومواعيد اليوم وتنبيهات الأسعار، وضريبة القيمة المضافة.", suppliers: "الموردين وكشوف حساباتهم، وفواتير الشراء اللي بتدخل البضاعة للمخزون بتكلفتها، والسداد.", svc: "تذاكر الضمان بالمسلسل: توجيه للتوكيل، أو استلام ومتابعة، أو استبدال فوري ومطالبة المورد — حسب قواعد كل ماركة.", inst: "البيع بالتقسيط عن طريق ValU وأمان وكونتكت وغيرهم: الخطط، ومين بيشيل العمولة، والمستحق عند كل شركة لحد ما تحوّل.", pos: "", cash: "رصيد الأدراج والخزنة، واعتماد تسليم الورديات، وفواتير الأيام الأخيرة وإلغاؤها.", transfers: "نقل البضاعة بين المعرضين والمخزن بطلب واعتماد وشحن واستلام.", dash: "نظرة سريعة على الأصناف والمخزون في كل مكان.", items: "كل صنف بباركوده ووحدته وسعره، ومسلسل وضمان للأجهزة.", io: "استورد الأصناف من Excel أو CSV بأي شكل أعمدة، ومعاها أرصدة أول المدة.", stock: "رصيد كل صنف في المعرضين والمخزن.", users: "ضيف موظفين وحدد دورهم وفرعهم، وادّيهم رمز مؤقت يغيّروه أول دخول.", devices: "اعتمد الأجهزة الجديدة وحدد نوع كل جهاز ومكانه." };
+const allowed = r => ({ gl: ["owner", "gm"].includes(S.sess.role.id) || can("gl"), commission: ["owner", "gm", "acct", "mgr", "seller"].includes(S.sess.role.id), offers: ["owner", "gm"].includes(S.sess.role.id) || can("offers"), settings: ["owner", "gm"].includes(S.sess.role.id), suppliers: can("suppliers") || can("stock", "a"), svc: can("svc"), inst: can("inst") || ["owner", "gm"].includes(S.sess.role.id), pos: can("pos", "a"), cash: can("cash") || can("close"), transfers: can("transfers"), dash: can("dash") || can("items"), items: can("items"), io: can("io", "i") && can("items", "a"), stock: can("stock") || can("items"), users: has("users"), devices: has("devices") })[r];
 
 async function enterApp() {
   $("#gate").hidden = true; $("#app").hidden = false;
@@ -222,7 +226,7 @@ async function enterApp() {
 function renderSide() {
   let h = `<div class="brand"><div class="mono">${MARK.replace("<svg", '<svg width="30" height="30" fill="none" style="stroke:var(--gold)" stroke-width="5" stroke-linecap="round"')}</div><div><b>${esc((S.store && S.store.name) || S.storeName || "")}</b><small>أدوات منزلية · أجهزة · مفروشات</small></div></div>`;
   NAV.forEach(([g, ids]) => { const v = ids.filter(allowed); if (!v.length) return; h += `<div class="navlbl">${g}</div><nav class="nav">${v.map(id => `<button data-go="${id}" class="${S.route === id ? "on" : ""}">${ico(id)}<span>${NAME[id]}</span></button>`).join("")}</nav>`; });
-  h += `<div class="foot">المرحلة الأولى<br><span class="num">${esc(CFG.version)}</span></div>`;
+  h += `<div class="foot">SYS Minzo<br><span class="num">${esc(CFG.version)}</span></div>`;
   $("#side").innerHTML = h;
 }
 function renderTop() {
@@ -438,14 +442,24 @@ async function qFlush() {
 addEventListener("online", qFlush); setInterval(qFlush, 30000);
 
 /* ---------- pricing preview (the server re-prices; this is for the screen only) ---------- */
+const cartSig = () => JSON.stringify(P.cart.map(l => [l.id, l.qty]));
+async function ofrFetch(sig) {
+  P.ofrReq = sig;
+  try { const r = await rpc("offers_preview", { p_token: T(), p: { lines: P.cart.map(l => ({ item_id: l.id, qty: l.qty })) } }); if (P.ofrReq !== sig) return; P.ofr = r; }
+  catch (e) { if (P.ofrReq !== sig) return; P.ofr = { error: true }; }
+  P.ofrSig = sig; P.ofrReq = null;
+  if (S.route === "pos" && cartSig() === sig && !$("#modal")) render();
+}
 function cartCalc() {
-  const st = S.store || {}, vatOn = st.vat_registered && st.vat_from && today() >= st.vat_from;
-  let gross = 0, vat = 0;
-  P.cart.forEach(l => { const it = S.items.find(i => i.id === l.id); l.it = it; gross += it.sale_price * l.qty; });
-  const disc = Math.round(gross * P.disc) / 100; let total = gross - disc;
-  if (vatOn) { P.cart.forEach(l => { const r = (l.it.vat_rate != null ? +l.it.vat_rate : +st.vat_rate) / 100, sh = l.it.sale_price * l.qty * (1 - P.disc / 100); vat += st.prices_include_vat ? sh - sh / (1 + r) : sh * r; }); vat = Math.round(vat * 100) / 100; if (!st.prices_include_vat) total += vat; }
+  const st = S.store || {}, vatOn = st.vat_registered && st.vat_from && today() >= st.vat_from, O = P.ofrSig === cartSig() && P.ofr && !P.ofr.error ? P.ofr : null;
+  let gross = 0, odisc = 0, mdisc = 0, vat = 0;
+  P.cart.forEach((l, n) => { const it = S.items.find(i => i.id === l.id); l.it = it; const g = it.sale_price * l.qty, ol = O && O.lines && O.lines[n], od = ol ? +ol.d || 0 : 0, md = Math.round((g - od) * P.disc) / 100;
+    l.od = od; l.on = od > 0 ? ol.n : ""; l.net = g - od - md; gross += g; odisc += od; mdisc += md; });
+  odisc = Math.round(odisc * 100) / 100; mdisc = Math.round(mdisc * 100) / 100;
+  const disc = odisc + mdisc; let total = gross - disc;
+  if (vatOn) { P.cart.forEach(l => { const r = (l.it.vat_rate != null ? +l.it.vat_rate : +st.vat_rate) / 100, sh = l.net; vat += st.prices_include_vat ? sh - sh / (1 + r) : sh * r; }); vat = Math.round(vat * 100) / 100; if (!st.prices_include_vat) total += vat; }
   const paid = Object.values(P.pay).reduce((a, v) => a + (+v || 0), 0);
-  return { gross, disc, vat, total: Math.round(total * 100) / 100, paid, change: paid - total, vatOn, incl: st.prices_include_vat };
+  return { gross, disc, odisc, mdisc, vat, total: Math.round(total * 100) / 100, paid, change: paid - total, vatOn, incl: st.prices_include_vat, ofrOk: !!O, ofrWait: P.cart.length && P.ofrSig !== cartSig() };
 }
 
 V.pos = () => {
@@ -463,13 +477,13 @@ V.pos = () => {
    <div class="tabs">${[["all", "الكل"], ...S.depts.map(x => [String(x.id), x.name])].map(([k, n]) => `<button data-act="posDep" data-k="${k}" class="${String(P.dep) === k ? "on" : ""}">${esc(n)}</button>`).join("")}</div>
    <div class="pgrid">${items.slice(0, 120).map(i => { const st = stockOf(i.id, loc); return `<button class="pcard ${st <= 0 ? "out" : ""}" data-act="posAdd" data-id="${i.id}"><b>${esc(i.name)}</b><span class="dim num" style="font-size:11.5px">${esc(i.barcode || i.code)}</span><div class="pr"><span class="num">${fmt(i.sale_price)}</span><span class="chip plain">${num(st)} ${UNITS[i.unit]}</span></div></button>`; }).join("") || `<p class="muted">${S.items.length ? "مفيش نتايج." : "لسه مفيش أصناف."}</p>`}</div></div>
   <div class="card cart stick"><h3>الفاتورة</h3>${P.cart.length ? P.cart.map((l, n) => { const it = l.it; const sers = P.serials.filter(s => s.item_id === it.id && !P.cart.some((o, m) => m !== n && o.serial === s.serial));
-     return `<div class="cline"><div><div class="nm">${esc(it.name)}</div><span class="dim num" style="font-size:12px">${fmt(it.sale_price, 1)} × ${num(l.qty)} ${UNITS[it.unit]}</span></div><div class="stack" style="gap:6px;align-items:flex-end"><span class="num">${fmt(it.sale_price * l.qty, 1)}</span>${it.serial_required ? `<button class="btn sm ghost" data-act="posDel" data-n="${n}">حذف</button>` : it.unit === "meter" ? `<span class="row" style="gap:4px"><input class="inp num" style="width:80px;padding:4px 8px" type="number" min="0.1" step="0.1" data-mqty="${n}" value="${l.qty}"><button class="btn sm ghost" data-act="posDel" data-n="${n}">✕</button></span>` : `<span class="qty"><button data-act="posQty" data-n="${n}" data-d="-1">−</button><span>${l.qty}</span><button data-act="posQty" data-n="${n}" data-d="1">+</button></span>`}</div>
+     return `<div class="cline"><div><div class="nm">${esc(it.name)}</div><span class="dim num" style="font-size:12px">${fmt(it.sale_price, 1)} × ${num(l.qty)} ${UNITS[it.unit]}</span>${l.od > 0 ? `<br><span class="chip gold plain" style="font-size:11.5px">${esc(l.on)} · −${fmt(l.od, 1)}</span>` : ""}</div><div class="stack" style="gap:6px;align-items:flex-end"><span class="num">${fmt(it.sale_price * l.qty, 1)}</span>${it.serial_required ? `<button class="btn sm ghost" data-act="posDel" data-n="${n}">حذف</button>` : it.unit === "meter" ? `<span class="row" style="gap:4px"><input class="inp num" style="width:80px;padding:4px 8px" type="number" min="0.1" step="0.1" data-mqty="${n}" value="${l.qty}"><button class="btn sm ghost" data-act="posDel" data-n="${n}">✕</button></span>` : `<span class="qty"><button data-act="posQty" data-n="${n}" data-d="-1">−</button><span>${l.qty}</span><button data-act="posQty" data-n="${n}" data-d="1">+</button></span>`}</div>
      ${it.serial_required ? `<div style="grid-column:1/-1" class="row"><span class="dim" style="font-size:12px">المسلسل</span><select class="inp" style="padding:5px 8px;font-size:12.5px;flex:1" data-ser="${n}"><option value="">— اختار —</option>${sers.map(s => `<option ${l.serial === s.serial ? "selected" : ""}>${esc(s.serial)}</option>`).join("")}</select>${it.warranty_months ? `<span class="chip gold plain">${it.warranty_months} شهر ضمان</span>` : ""}</div>` : ""}
      ${it.unit === "meter" ? `<div style="grid-column:1/-1" class="row"><span class="dim" style="font-size:12px">فاقد قص (سم) — اختياري</span><input class="inp num" type="number" min="0" style="width:90px;padding:4px 8px" data-waste="${n}" value="${l.waste || ""}"></div>` : ""}</div>`; }).join("") : `<div class="muted" style="padding:24px 0;text-align:center">امسح أول صنف</div>`}
    ${P.cart.length ? `<div class="stack" style="gap:2px;margin-top:8px"><div class="tot"><span class="muted">الإجمالي</span><span class="num">${fmt(c.gross, 1)}</span></div>
     <div class="tot"><span class="muted">خصم % <span class="dim">(حدّك ${max}%)</span></span><input class="inp num" style="width:70px;padding:4px 8px" type="number" min="0" max="100" id="posDisc" value="${P.disc}"></div>
     ${P.disc > max ? `<div class="warnbox">فوق حدّك — اكتب رمز مدير حدّه أعلى: <input class="inp num" type="password" id="posPin" style="margin-top:6px" value="${esc(P.pin)}"></div>` : ""}
-    ${c.disc ? `<div class="tot up"><span>الخصم</span><span class="num">−${fmt(c.disc, 1)}</span></div>` : ""}
+    ${c.odisc ? `<div class="tot up"><span>خصم العروض</span><span class="num">−${fmt(c.odisc, 1)}</span></div>` : ""}${c.mdisc ? `<div class="tot up"><span>الخصم اليدوي</span><span class="num">−${fmt(c.mdisc, 1)}</span></div>` : ""}${c.ofrWait ? `<div class="tot dim"><span>بيحسب العروض…</span><span></span></div>` : ""}
     ${c.vatOn ? `<div class="tot dim"><span>${c.incl ? "منها ضريبة القيمة المضافة" : "ضريبة القيمة المضافة"}</span><span class="num">${fmt(c.vat, 1)}</span></div>` : ""}
     <div class="tot big"><span>المطلوب</span><span class="num">${fmt(c.total, 1)}</span></div></div>
    <div class="field"><label>العميل ${P.cart.some(l => l.it.serial_required) || +P.pay.inst > 0 ? `<b style="color:var(--warn)">— إجباري للأجهزة</b>` : `<span class="dim">(اختياري)</span>`}</label><div class="row" style="flex-wrap:nowrap"><input class="inp" id="cName" placeholder="الاسم" value="${esc(P.cust.name)}"><input class="inp num" id="cPhone" placeholder="01xxxxxxxxx" value="${esc(P.cust.phone)}" inputmode="tel"></div></div>
@@ -483,6 +497,7 @@ V.pos = () => {
 };
 H.pos = () => {
   const qi = $("#posQ"); if (!qi) return;
+  { const sig = cartSig(); if (P.cart.length && P.ofrSig !== sig && P.ofrReq !== sig) ofrFetch(sig); }
   qi.focus();
   qi.oninput = () => { P.q = qi.value; const p = qi.selectionStart; render(); const n = $("#posQ"); n.focus(); n.setSelectionRange(p, p); };
   qi.onkeydown = e => { if (e.key !== "Enter") return; const v = qi.value.trim(); const it = S.items.find(i => i.barcode === v || i.code === v); if (it) { posAdd(it.id); P.q = ""; render(); } else if (v) toast("مفيش صنف بالباركود ده.", true); };
@@ -507,6 +522,7 @@ function posAdd(id) {
   const l = P.cart.find(x => x.id === id && !x.serial); if (l) l.qty = +(l.qty + 1).toFixed(3); else P.cart.push({ id, qty: 1 });
 }
 async function posPay(btn) {
+  if (P.ofrSig !== cartSig()) { busy(btn, true); await ofrFetch(cartSig()); render(); return toast("اتحسبت العروض — راجع المبلغ واضغط إتمام البيع تاني."); }
   const c = cartCalc(), err = m => ($("#posErr").innerHTML = `<div class="warnbox">${esc(m)}</div>`);
   if (P.cart.some(l => l.it.serial_required && !l.serial)) return err("اختار المسلسل لكل جهاز.");
   if (P.cart.some(l => l.it.serial_required) && (!P.cust.name.trim() || !/^01\d{9}$/.test(P.cust.phone.trim()))) return err("الأجهزة محتاجة اسم العميل وموبايل صحيح.");
@@ -515,7 +531,7 @@ async function posPay(btn) {
   if (P.cust.phone && !/^01\d{9}$/.test(P.cust.phone.trim())) return err("رقم الموبايل غلط.");
   if (c.paid < c.total - 0.004) return err("المدفوع أقل من المطلوب.");
   const nonCash = c.paid - (+P.pay.cash || 0); if (nonCash > c.total + 0.004) return err("الفيزا والمحافظ أكتر من المطلوب — الباقي بيرجع من النقدي بس.");
-  const p = { client_uuid: uuid(), lines: P.cart.map(l => ({ item_id: l.id, qty: l.qty, serial: l.serial || null, cut_waste_m: l.waste || null })), discount_pct: P.disc, approver_pin: P.disc > (+S.sess.role.max_discount_pct || 0) ? P.pin : null,
+  const p = { client_uuid: uuid(), lines: P.cart.map(l => ({ item_id: l.id, qty: l.qty, serial: l.serial || null, cut_waste_m: l.waste || null })), discount_pct: P.disc, offers_seen: c.ofrOk, approver_pin: P.disc > (+S.sess.role.max_discount_pct || 0) ? P.pin : null,
     customer: P.cust.phone ? { name: P.cust.name.trim(), phone: P.cust.phone.trim() } : null, seller_id: P.seller || null,
     payments: Object.entries(P.pay).filter(([, v]) => +v > 0).map(([m, v]) => m === "inst" ? { method: m, amount: +v, plan_id: +P.plan } : { method: m, amount: +v }), held_id: P.heldId || null };
   busy(btn, true);
@@ -526,13 +542,13 @@ async function posPay(btn) {
   }
 }
 function posDone(r, c) {
-  const lines = P.cart.map(l => ({ n: l.it.name, q: l.qty, u: UNITS[l.it.unit], p: l.it.sale_price, sn: l.serial }));
+  const lines = P.cart.map(l => ({ n: l.it.name, q: l.qty, u: UNITS[l.it.unit], p: l.it.sale_price, sn: l.serial, od: l.od, on: l.on }));
   const pays = Object.entries(P.pay).filter(([, v]) => +v > 0); P.planDone = P.plan;
   P.cart = []; P.disc = 0; P.pin = ""; P.cust = { name: "", phone: "" }; P.seller = ""; P.plan = ""; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" };
   modal(`<h2>${r.offline ? "اتحفظت على الجهاز" : "تم البيع"}</h2>${r.offline ? `<div class="warnbox">مفيش نت — الفاتورة اتحفظت على الجهاز وهتتبعت لوحدها أول ما النت يرجع.</div>` : ""}
    <div class="receipt" id="rcpt"><div style="text-align:center;font-family:var(--f-display);font-size:16px">${esc(S.store.name)}</div><div style="text-align:center" class="dim">${esc(locName(S.sess.device.location_id))} · ${new Date().toLocaleString("ar-EG")}</div><div style="text-align:center" class="num">${esc(r.no)}</div><div class="hr" style="margin:8px 0"></div>
-   ${lines.map(x => `<div class="r"><span>${esc(x.n)} × ${num(x.q)}${x.sn ? `<br><span class="dim">SN ${esc(x.sn)}</span>` : ""}</span><span>${fmt(x.p * x.q, 1)}</span></div>`).join("")}
-   ${c.disc ? `<div class="r"><span>خصم</span><span>−${fmt(c.disc, 1)}</span></div>` : ""}${c.vatOn ? `<div class="r"><span>ض.ق.م</span><span>${fmt(r.vat != null ? r.vat : c.vat, 1)}</span></div>` : ""}
+   ${lines.map(x => `<div class="r"><span>${esc(x.n)} × ${num(x.q)}${x.sn ? `<br><span class="dim">SN ${esc(x.sn)}</span>` : ""}${x.od > 0 ? `<br><span class="dim">${esc(x.on)} −${fmt(x.od, 1)}</span>` : ""}</span><span>${fmt(x.p * x.q, 1)}</span></div>`).join("")}
+   ${c.odisc && !r.offline ? `<div class="r"><span>خصم العروض</span><span>−${fmt(c.odisc, 1)}</span></div>` : ""}${c.mdisc ? `<div class="r"><span>خصم</span><span>−${fmt(c.mdisc, 1)}</span></div>` : ""}${c.vatOn ? `<div class="r"><span>ض.ق.م</span><span>${fmt(r.vat != null ? r.vat : c.vat, 1)}</span></div>` : ""}
    <div class="hr" style="margin:8px 0"></div><div class="r"><b>الإجمالي</b><b>${fmt(r.total, 1)}</b></div>${pays.map(([k, v]) => `<div class="r"><span>${k === "inst" ? "تقسيط · " + esc(planName(P.planDone)) : PAYN[k]}</span><span>${fmt(v, 1)}</span></div>`).join("")}${(r.change || 0) > 0 ? `<div class="r"><span>الباقي</span><span>${fmt(r.change, 1)}</span></div>` : ""}</div>
    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn" data-act="rcptPrint">طباعة</button><button class="btn gold" data-act="rcptOk">فاتورة جديدة</button></div>`);
   loadItems().then(() => { P.shift = undefined; }).catch(() => {});
@@ -881,6 +897,256 @@ async function ops3Click(k, a) {
   else if (k === "ruleSave") { const p = { id: a.dataset.id ? +a.dataset.id : null, brand: $("#wrB").value.trim() || "*", group_name: $("#wrG").value, months: +$("#wrM").value || 0, action: $("#wrA").value, center: $("#wrC").value.trim(), phone: $("#wrP").value.trim(), max_days: +$("#wrX").value || 14 };
     if (!a.dataset.id && p.brand === "*") return ($("#wrErr").innerHTML = `<div class="warnbox">اكتب الماركة.</div>`);
     wrap(() => rpc("wrule_save", { p_token: T(), p }), async () => { closeModal(); S.svc = null; render(); }, "#wrErr"); }
+  else return ops4Click(k, a);
+  return true;
+}
+
+/* =====================================================================
+   PHASE 2c · general ledger · settings & VAT · salesperson commission · offers
+   ===================================================================== */
+const r2 = n => Math.round((+n || 0) * 100) / 100;
+function xlsOut(file, sheet, aoa, widths) { const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!views"] = [{ RTL: true }]; if (widths) ws["!cols"] = widths.map(w => ({ wch: w })); const wb = XLSX.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] }; XLSX.utils.book_append_sheet(wb, ws, sheet); XLSX.writeFile(wb, file + ".xlsx"); }
+const isOwnerGm = () => ["owner", "gm"].includes(S.sess.role.id);
+
+/* ---------- general ledger ---------- */
+const GKN = { A: "أصول", L: "خصوم", E: "حقوق ملكية", R: "إيرادات", X: "مصروفات" };
+const GSRC = { sale: "بيع", void: "إلغاء فاتورة", return: "مرتجع", purchase: "شراء", stock: "مخزون", supplier: "مورد", cash: "نقدية", manual: "قيد يدوي", closing: "إقفال" };
+const GTABS = [["tb", "ميزان المراجعة"], ["is", "قائمة الدخل"], ["bs", "المركز المالي"], ["jr", "اليومية"], ["lg", "دفتر الأستاذ"], ["coa", "دليل الحسابات"], ["jv", "القيود اليدوية"], ["per", "الفترات والإقفال"]];
+async function loadGL() {
+  const G = S.gl || { tab: "tb", from: today().slice(0, 4) + "-01-01", to: today(), loc: "all", acct: "1101", page: 0, year: +today().slice(0, 4) };
+  const [rows, accts, man, ml, per, yrs] = await Promise.all([rpc("gl_journal", { p_token: T(), p_from: null, p_to: G.to }), q("gl_accounts", "*", x => x.order("code")), q("gl_manual", "*", x => x.order("created_at", { ascending: false }).limit(500)), q("gl_manual_lines", "*", x => x.order("id").limit(10000)), q("gl_periods", "*"), q("gl_years", "*")]);
+  G.all = (rows || []).map(r => ({ d: r[0], src: r[1], ref: r[2], memo: r[3], a: r[4], dr: +r[5] || 0, cr: +r[6] || 0, loc: r[7] }));
+  G.accts = accts; G.man = man; G.ml = ml; G.per = per.map(p => p.month); G.yrs = yrs.map(y => y.year); G.loaded = G.to;
+  if (!S.dir) await loadDir().catch(() => {});
+  S.gl = G; return G;
+}
+const glLeaf = (G, c) => !G.accts.some(a => a.parent === c);
+const glAcc = (G, c) => G.accts.find(a => a.code === c) || { name: c, kind: "A" };
+const glDebitNature = k => k === "A" || k === "X";
+function glRows(G, inPeriod) { return G.all.filter(r => (G.loc === "all" || r.loc === +G.loc) && (inPeriod === "before" ? r.d < G.from : inPeriod ? r.d >= G.from && r.d <= G.to : r.d <= G.to)); }
+function glSum(rows) { const m = {}; rows.forEach(r => { const x = m[r.a] || (m[r.a] = { dr: 0, cr: 0 }); x.dr += r.dr; x.cr += r.cr; }); return m; }
+const glRoll = (m, code) => Object.keys(m).filter(c => c.startsWith(code)).reduce((s, c) => ({ dr: s.dr + m[c].dr, cr: s.cr + m[c].cr }), { dr: 0, cr: 0 });
+
+function glIncome(G) { const m = glSum(glRows(G, true).filter(r => r.src !== "closing")), net = (c, k) => { const x = glRoll(m, c); return glDebitNature(k) ? x.dr - x.cr : x.cr - x.dr; };
+  const leaves = p => G.accts.filter(a => a.code.startsWith(p) && glLeaf(G, a.code));
+  const rev = leaves("4").map(a => [a.code + " " + a.name, net(a.code, "R")]), cogs = leaves("51").map(a => [a.code + " " + a.name, net(a.code, "X")]), opx = G.accts.filter(a => a.kind === "X" && !a.code.startsWith("51") && glLeaf(G, a.code)).map(a => [a.code + " " + a.name, net(a.code, "X")]);
+  const R = rev.reduce((s, x) => s + x[1], 0), C = cogs.reduce((s, x) => s + x[1], 0), O = opx.reduce((s, x) => s + x[1], 0);
+  return { rev, cogs, opx, R, C, O, gp: R - C, np: R - C - O }; }
+function glBalance(G) { const m = glSum(glRows(G, false)), bal = (c, k) => { const x = glRoll(m, c); return glDebitNature(k) ? x.dr - x.cr : x.cr - x.dr; };
+  const sec = k => G.accts.filter(a => a.kind === k && glLeaf(G, a.code)).map(a => [a.code + " " + a.name, bal(a.code, k)]).filter(x => Math.abs(x[1]) > 0.004);
+  const A = sec("A"), L = sec("L"), E = sec("E"), pr = G.accts.filter(a => (a.kind === "R" || a.kind === "X") && glLeaf(G, a.code)).reduce((s, a) => { const x = m[a.code] || { dr: 0, cr: 0 }; return s + x.cr - x.dr; }, 0);
+  const tA = A.reduce((s, x) => s + x[1], 0), tL = L.reduce((s, x) => s + x[1], 0), tE = E.reduce((s, x) => s + x[1], 0) + pr;
+  return { A, L, E, pr, tA, tL, tE }; }
+function glTB(G) { const o = glSum(glRows(G, "before")), p = glSum(glRows(G, true));
+  return G.accts.filter(a => glLeaf(G, a.code)).map(a => { const ob = o[a.code] || { dr: 0, cr: 0 }, pm = p[a.code] || { dr: 0, cr: 0 }, open = ob.dr - ob.cr, close = open + pm.dr - pm.cr; return { a, open, dr: pm.dr, cr: pm.cr, close }; }).filter(x => Math.abs(x.open) > 0.004 || x.dr || x.cr); }
+
+V.gl = () => { let h = header(); const G = S.gl; if (!G || G.loaded !== G.to) { setTimeout(() => loadGL().then(() => S.route === "gl" && render()).catch(e => toast(errText(e), true)), 0); return h + `<div class="spin"></div>`; }
+  const canA = isOwnerGm() || can("gl", "a"), canP = isOwnerGm() || can("gl", "p"), pend = G.man.filter(m => m.status === "pending");
+  h = header(`${canA ? `<button class="btn gold" data-act="jvNew">${ico("plus")} قيد يدوي</button>` : ""}<button class="btn" data-act="glXls">Excel</button>`);
+  h += `<div class="card rise" style="padding:12px"><div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end"><div class="field"><label>من</label><input class="inp" type="date" id="glF" value="${G.from}"></div><div class="field"><label>إلى</label><input class="inp" type="date" id="glT" value="${G.to}" max="${today()}"></div>
+   <div class="field"><label>المكان</label><select class="inp" id="glL"><option value="all">الكل (المحل كله)</option>${S.locs.map(l => `<option value="${l.id}" ${String(G.loc) === String(l.id) ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></div>
+   ${pend.length ? `<span class="chip warn">${pend.length} قيد مستني اعتماد</span>` : ""}</div>${G.loc !== "all" ? `<p class="dim" style="margin:8px 0 0;font-size:12.5px">فلتر المكان بيعرض قيود المعرض أو المخزن بس — الخزنة الرئيسية والقيود اليدوية بتظهر في «الكل».</p>` : ""}</div>`;
+  h += `<div class="tabs rise">${GTABS.map(([k, n]) => `<button data-act="glTab" data-k="${k}" class="${G.tab === k ? "on" : ""}">${n}</button>`).join("")}</div>`;
+  const F = (n, b) => `<td class="n">${n ? (b ? "<b>" : "") + fmt(n, 1) + (b ? "</b>" : "") : ""}</td>`;
+  if (G.tab === "tb") { const L = glTB(G), tot = L.reduce((s, x) => ({ dr: s.dr + x.dr, cr: s.cr + x.cr, cd: s.cd + Math.max(x.close, 0), cc: s.cc + Math.max(-x.close, 0) }), { dr: 0, cr: 0, cd: 0, cc: 0 }), ok = Math.abs(tot.dr - tot.cr) < 0.01 && Math.abs(tot.cd - tot.cc) < 0.01;
+    h += `<div class="tw rise"><table><thead><tr><th>الحساب</th><th class="n">رصيد أول الفترة</th><th class="n">مدين</th><th class="n">دائن</th><th class="n">الرصيد مدين</th><th class="n">الرصيد دائن</th></tr></thead><tbody>${L.map(x => `<tr><td><span class="num dim">${x.a.code}</span> ${esc(x.a.name)}</td><td class="n">${x.open ? fmt(x.open, 1) : ""}</td>${F(x.dr)}${F(x.cr)}${F(Math.max(x.close, 0))}${F(Math.max(-x.close, 0))}</tr>`).join("") || `<tr><td colspan="6" class="muted">مفيش حركات في الفترة دي.</td></tr>`}
+     <tr><td><b>الإجمالي</b></td><td></td>${F(tot.dr, 1)}${F(tot.cr, 1)}${F(tot.cd, 1)}${F(tot.cc, 1)}</tr></tbody></table></div><div class="${ok ? "okbox" : "warnbox"} rise">${ok ? "الميزان متوازن." : "الميزان مش متوازن — بلّغ الدعم."}</div>`; }
+  if (G.tab === "is") { const I = glIncome(G), sec = (t, L) => `<tr><td colspan="2"><b>${t}</b></td></tr>` + L.filter(x => Math.abs(x[1]) > 0.004).map(x => `<tr><td style="padding-inline-start:22px">${esc(x[0])}</td><td class="n">${fmt(x[1], 1)}</td></tr>`).join("");
+    h += `<div class="tw rise" style="max-width:720px"><table><tbody>${sec("الإيرادات", I.rev)}<tr><td><b>صافي الإيرادات</b></td><td class="n"><b>${fmt(I.R, 1)}</b></td></tr>${sec("تكلفة البضاعة المباعة", I.cogs)}<tr><td><b>مجمل الربح</b></td><td class="n"><b>${fmt(I.gp, 1)}</b>${I.R ? `<br><span class="dim" style="font-size:12px">${(I.gp / I.R * 100).toFixed(1)}%</span>` : ""}</td></tr>${sec("المصروفات", I.opx)}<tr><td><b>إجمالي المصروفات</b></td><td class="n">${fmt(I.O, 1)}</td></tr>
+     <tr><td><b style="font-size:16px">صافي ${I.np >= 0 ? "الربح" : "الخسارة"}</b></td><td class="n"><b style="font-size:16px;color:${I.np >= 0 ? "var(--ok)" : "var(--bad)"}">${fmt(Math.abs(I.np), 1)}</b></td></tr></tbody></table></div>`; }
+  if (G.tab === "bs") { const B = glBalance(G), sec = (t, L) => `<tr><td colspan="2"><b>${t}</b></td></tr>` + L.map(x => `<tr><td style="padding-inline-start:22px">${esc(x[0])}</td><td class="n">${fmt(x[1], 1)}</td></tr>`).join(""), ok = Math.abs(B.tA - B.tL - B.tE) < 0.01;
+    h += `<p class="muted rise">المركز المالي في ${esc(G.to)}</p><div class="grid g2 rise"><div class="tw"><table><tbody>${sec("الأصول", B.A)}<tr><td><b>إجمالي الأصول</b></td><td class="n"><b>${fmt(B.tA, 1)}</b></td></tr></tbody></table></div>
+     <div class="tw"><table><tbody>${sec("الخصوم", B.L)}<tr><td><b>إجمالي الخصوم</b></td><td class="n"><b>${fmt(B.tL, 1)}</b></td></tr>${sec("حقوق الملكية", B.E)}<tr><td style="padding-inline-start:22px">أرباح ${B.pr >= 0 ? "" : "(خسائر) "}لم تُقفل بعد</td><td class="n">${fmt(B.pr, 1)}</td></tr><tr><td><b>إجمالي حقوق الملكية</b></td><td class="n"><b>${fmt(B.tE, 1)}</b></td></tr><tr><td><b>الخصوم + حقوق الملكية</b></td><td class="n"><b>${fmt(B.tL + B.tE, 1)}</b></td></tr></tbody></table></div></div>
+     <div class="${ok ? "okbox" : "warnbox"} rise">${ok ? "الأصول = الخصوم + حقوق الملكية." : "فيه فرق — بلّغ الدعم."}</div>`; }
+  if (G.tab === "jr") { const R = glRows(G, true).slice().reverse(), groups = []; R.forEach(r => { const k = r.d + "|" + r.src + "|" + r.ref + "|" + r.memo; let g = groups[groups.length - 1]; if (!g || g.k !== k) groups.push(g = { k, r, L: [] }); g.L.push(r); });
+    const per = 60, pg = Math.min(G.page, Math.max(0, Math.ceil(groups.length / per) - 1)), show = groups.slice(pg * per, pg * per + per);
+    h += `<div class="tw rise"><table><thead><tr><th>التاريخ</th><th>المصدر</th><th>البيان</th><th>الحساب</th><th class="n">مدين</th><th class="n">دائن</th></tr></thead><tbody>${show.map(g => g.L.map((r, i) => `<tr${i === 0 ? ` style="border-top:2px solid var(--line2)"` : ""}><td class="num">${i === 0 ? esc(r.d) : ""}</td><td>${i === 0 ? `<span class="chip plain">${GSRC[r.src] || esc(r.src)}</span>` : ""}</td><td>${i === 0 ? `${esc(r.memo || "")}${r.loc ? `<br><span class="dim" style="font-size:12px">${esc(locName(r.loc))}</span>` : ""}` : ""}</td><td><span class="num dim">${r.a}</span> ${esc(glAcc(G, r.a).name)}</td>${F(r.dr)}${F(r.cr)}</tr>`).join("")).join("") || `<tr><td colspan="6" class="muted">مفيش قيود في الفترة دي.</td></tr>`}</tbody></table></div>
+     ${groups.length > per ? `<div class="row rise" style="justify-content:center;gap:8px"><button class="btn sm" data-act="glPage" data-d="-1" ${pg === 0 ? "disabled" : ""}>الأحدث</button><span class="dim num">${pg + 1} / ${Math.ceil(groups.length / per)}</span><button class="btn sm" data-act="glPage" data-d="1" ${(pg + 1) * per >= groups.length ? "disabled" : ""}>الأقدم</button></div>` : ""}`; }
+  if (G.tab === "lg") { const ac = glAcc(G, G.acct), dn = glDebitNature(ac.kind), ob = glSum(glRows(G, "before"))[G.acct] || { dr: 0, cr: 0 }; let run = dn ? ob.dr - ob.cr : ob.cr - ob.dr; const L = glRows(G, true).filter(r => r.a === G.acct);
+    h += `<div class="field rise" style="max-width:420px"><label>الحساب</label><select class="inp" id="glA">${G.accts.filter(a => glLeaf(G, a.code)).map(a => `<option value="${a.code}" ${a.code === G.acct ? "selected" : ""}>${a.code} · ${esc(a.name)}</option>`).join("")}</select></div>
+     <div class="tw rise"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>المرجع</th><th class="n">مدين</th><th class="n">دائن</th><th class="n">الرصيد</th></tr></thead><tbody><tr><td class="num">${esc(G.from)}</td><td colspan="4"><b>رصيد أول الفترة</b></td><td class="n"><b>${fmt(run, 1)}</b></td></tr>${L.map(r => { run += dn ? r.dr - r.cr : r.cr - r.dr; return `<tr><td class="num">${esc(r.d)}</td><td>${esc(r.memo || GSRC[r.src] || "")}</td><td class="num dim">${esc(String(r.ref || "").slice(0, 14))}</td>${F(r.dr)}${F(r.cr)}<td class="n">${fmt(run, 1)}</td></tr>`; }).join("")}<tr><td colspan="5"><b>الرصيد آخر الفترة</b> <span class="dim">(${dn ? "مدين" : "دائن"} بطبيعته)</span></td><td class="n"><b>${fmt(run, 1)}</b></td></tr></tbody></table></div>`; }
+  if (G.tab === "coa") { const m = glSum(glRows(G, false));
+    h += `<div class="tw rise"><table><thead><tr><th>الكود</th><th>الحساب</th><th>النوع</th><th class="n">الرصيد في ${esc(G.to)}</th><th></th></tr></thead><tbody>${G.accts.map(a => { const x = glRoll(m, a.code), b = glDebitNature(a.kind) ? x.dr - x.cr : x.cr - x.dr, lf = glLeaf(G, a.code), dep = a.code.length <= 1 ? 0 : a.code.length <= 2 ? 1 : 2;
+      return `<tr><td class="num">${a.code}</td><td style="padding-inline-start:${10 + dep * 18}px">${lf ? esc(a.name) : `<b>${esc(a.name)}</b>`}${a.name_en && a.name_en !== a.name ? `<br><span class="dim" style="font-size:12px">${esc(a.name_en)}</span>` : ""}</td><td>${GKN[a.kind]}</td><td class="n">${lf ? fmt(b, 1) : `<b>${fmt(b, 1)}</b>`}</td><td>${canP && a.code.length <= 2 ? `<button class="btn sm ghost" data-act="coaAdd" data-c="${a.code}">${ico("plus")} حساب فرعي</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div><div class="okbox rise">الحسابات الأساسية ثابتة لأن القيود التلقائية بتتسجّل عليها. تقدر تضيف حسابات فرعية تحت أي مجموعة (مثلاً: مصروف جديد تحت «مصروفات التشغيل»).</div>`; }
+  if (G.tab === "jv") { h += `<div class="tw rise"><table><thead><tr><th>القيد</th><th>التاريخ</th><th>البيان</th><th>السطور</th><th class="n">المبلغ</th><th>الحالة</th><th></th></tr></thead><tbody>${G.man.map(m => { const L = G.ml.filter(l => l.entry_id === m.id), amt = L.reduce((s, l) => s + +l.dr, 0);
+      return `<tr><td class="num">${esc(m.no)}</td><td class="num">${esc(m.entry_date)}</td><td>${esc(m.memo)}<br><span class="dim" style="font-size:12px">${esc(who(m.created_by))}${m.approved_by && m.approved_by !== m.created_by ? " · اعتمده " + esc(who(m.approved_by)) : ""}</span></td><td style="font-size:12.5px">${L.map(l => `${+l.dr ? "من" : "إلى"} ${esc(glAcc(G, l.account).name)} <span class="num">${fmt(+l.dr || +l.cr, 1)}</span>`).join("<br>")}</td><td class="n">${fmt(amt, 1)}</td>
+       <td><span class="chip ${m.status === "approved" ? "ok" : m.status === "pending" ? "warn" : "bad"}">${{ approved: "معتمد", pending: "مستني اعتماد", rejected: "مرفوض" }[m.status]}</span>${m.kind === "closing" ? `<br><span class="chip plain" style="margin-top:4px">إقفال سنوي</span>` : ""}</td><td class="row" style="gap:4px;flex-wrap:nowrap">${m.status === "pending" && canP && (m.created_by !== S.sess.staff.id || S.sess.role.id === "owner") ? `<button class="btn sm gold" data-act="jvOk" data-id="${m.id}">اعتماد</button><button class="btn sm ghost" data-act="jvNo" data-id="${m.id}">رفض</button>` : ""}</td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">لسه مفيش قيود يدوية.</td></tr>`}</tbody></table></div><div class="okbox rise">القيود التلقائية (البيع والشراء والخزنة والمخزون) بتتعمل لوحدها من المستندات ومينفعش تتعدّل باليد. القيد اليدوي للمصروفات والتسويات، وبيتسجّل بعد اعتماد المالك أو المدير العام أو المحاسب (غير اللي كتبه).</div>`; }
+  if (G.tab === "per") { const y = G.year, ys = [...new Set([+today().slice(0, 4), +today().slice(0, 4) - 1, ...G.yrs])].sort((a, b) => b - a), closedY = G.yrs.includes(y);
+    h += `<div class="row rise" style="gap:8px"><select class="inp" id="glY" style="width:120px">${ys.map(v => `<option ${v === y ? "selected" : ""}>${v}</option>`).join("")}</select>${closedY ? `<span class="chip ok">السنة دي اتقفلت</span>` : S.sess.role.id === "owner" ? `<button class="btn gold" data-act="yearClose" data-y="${y}">إقفال سنة ${y}</button>` : ""}</div>
+     <div class="tw rise"><table><thead><tr><th>الشهر</th><th>الحالة</th><th></th></tr></thead><tbody>${Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, "0")}`).map(mo => { const cl = G.per.includes(mo); return `<tr><td class="num">${mo}</td><td><span class="chip ${cl ? "ok" : "info"}">${cl ? "مقفول" : "مفتوح"}</span></td><td>${!cl && canP && mo < today().slice(0, 7) ? `<button class="btn sm" data-act="perSet" data-m="${mo}" data-c="1">إقفال الشهر</button>` : ""}${cl && !closedY && S.sess.role.id === "owner" ? `<button class="btn sm ghost" data-act="perSet" data-m="${mo}" data-c="0">إعادة فتح</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>
+     <div class="okbox rise">الشهر المقفول مينفعش يتسجّل عليه قيد يدوي جديد. إقفال السنة بيرحّل صافي الربح أو الخسارة لحساب «الأرباح المحتجزة» ويقفل الـ ١٢ شهر — والمالك بس اللي يعمله.</div>`; }
+  return h; };
+H.gl = () => { const G = S.gl; if (!G || !$("#glF")) return;
+  $("#glF").onchange = e => { G.from = e.target.value || G.from; G.page = 0; render(); };
+  $("#glT").onchange = e => { G.to = e.target.value || today(); G.page = 0; render(); };
+  $("#glL").onchange = e => { G.loc = e.target.value; render(); };
+  const a = $("#glA"); if (a) a.onchange = () => { G.acct = a.value; render(); };
+  const y = $("#glY"); if (y) y.onchange = () => { G.year = +y.value; render(); }; };
+function jvModal() { const G = S.gl, leaves = G.accts.filter(a => glLeaf(G, a.code)); S.jv = S.jv || { date: today(), memo: "", lines: [{ a: "", dr: "", cr: "" }, { a: "", dr: "", cr: "" }] }; const J = S.jv;
+  modal(`<h2>قيد يدوي</h2><div class="stack" style="margin-top:10px"><div class="grid g2"><div class="field"><label>التاريخ</label><input class="inp" type="date" id="jvD" value="${J.date}" max="${today()}"></div><div class="field"><label>البيان</label><input class="inp" id="jvM" value="${esc(J.memo)}" placeholder="مثال: إيجار المعرض الأول — نوفمبر"></div></div>
+   ${J.lines.map((l, n) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><select class="inp" data-jva="${n}" style="flex:2"><option value="">— الحساب —</option>${leaves.map(a => `<option value="${a.code}" ${l.a === a.code ? "selected" : ""}>${a.code} · ${esc(a.name)}</option>`).join("")}</select><input class="inp num" type="number" min="0" step="0.01" placeholder="مدين" data-jvd="${n}" value="${esc(l.dr)}" style="width:100px"><input class="inp num" type="number" min="0" step="0.01" placeholder="دائن" data-jvc="${n}" value="${esc(l.cr)}" style="width:100px">${J.lines.length > 2 ? `<button class="btn sm ghost" data-act="jvDel" data-n="${n}">✕</button>` : ""}</div>`).join("")}
+   <button class="btn sm" data-act="jvAdd" style="align-self:flex-start">${ico("plus")} سطر</button>
+   <div class="row between" id="jvTot"></div>
+   ${S.sess.role.id === "owner" ? "" : `<p class="dim" style="margin:0;font-size:12.5px">القيد هيتسجّل بعد ما حد تاني له صلاحية يعتمده.</p>`}<div id="jvErr"></div>
+   <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="jvCancel">إلغاء</button><button class="btn gold" data-act="jvSave">حفظ القيد</button></div></div>`);
+  const sync = () => { J.date = $("#jvD").value; J.memo = $("#jvM").value; document.querySelectorAll("[data-jva]").forEach(e => { J.lines[+e.dataset.jva].a = e.value; }); document.querySelectorAll("[data-jvd]").forEach(e => { J.lines[+e.dataset.jvd].dr = e.value; }); document.querySelectorAll("[data-jvc]").forEach(e => { J.lines[+e.dataset.jvc].cr = e.value; }); };
+  const tot = () => { sync(); const td = J.lines.reduce((s, l) => s + (+l.dr || 0), 0), tc = J.lines.reduce((s, l) => s + (+l.cr || 0), 0), ok = td > 0 && Math.abs(td - tc) < 0.005;
+    $("#jvTot").innerHTML = `<span class="muted">مدين <b class="num">${fmt(td, 1)}</b> · دائن <b class="num">${fmt(tc, 1)}</b></span><span class="chip ${ok ? "ok" : "warn"}">${ok ? "متوازن" : "مش متوازن — الفرق " + fmt(Math.abs(td - tc), 1)}</span>`; };
+  S._jvSync = sync; document.querySelectorAll("[data-jvd],[data-jvc]").forEach(e => e.oninput = tot); tot(); }
+function glExport() { const G = S.gl, nm = (GTABS.find(t => t[0] === G.tab) || ["", "قيود"])[1], tag = ` ${G.from} إلى ${G.to}`;
+  if (G.tab === "tb") return xlsOut("ميزان-المراجعة", "الميزان", [["ميزان المراجعة" + tag], ["الكود", "الحساب", "أول الفترة", "مدين", "دائن", "الرصيد مدين", "الرصيد دائن"], ...glTB(G).map(x => [x.a.code, x.a.name, r2(x.open), r2(x.dr), r2(x.cr), r2(Math.max(x.close, 0)), r2(Math.max(-x.close, 0))])], [8, 34, 14, 14, 14, 14, 14]);
+  if (G.tab === "is") { const I = glIncome(G); return xlsOut("قائمة-الدخل", "الدخل", [["قائمة الدخل" + tag], ["الإيرادات"], ...I.rev.map(x => ["  " + x[0], r2(x[1])]), ["صافي الإيرادات", r2(I.R)], ["تكلفة البضاعة المباعة"], ...I.cogs.map(x => ["  " + x[0], r2(x[1])]), ["مجمل الربح", r2(I.gp)], ["المصروفات"], ...I.opx.map(x => ["  " + x[0], r2(x[1])]), ["إجمالي المصروفات", r2(I.O)], ["صافي الربح", r2(I.np)]], [40, 16]); }
+  if (G.tab === "bs") { const B = glBalance(G); return xlsOut("المركز-المالي", "المركز المالي", [["المركز المالي في " + G.to], ["الأصول"], ...B.A.map(x => ["  " + x[0], r2(x[1])]), ["إجمالي الأصول", r2(B.tA)], ["الخصوم"], ...B.L.map(x => ["  " + x[0], r2(x[1])]), ["إجمالي الخصوم", r2(B.tL)], ["حقوق الملكية"], ...B.E.map(x => ["  " + x[0], r2(x[1])]), ["  أرباح لم تُقفل بعد", r2(B.pr)], ["إجمالي حقوق الملكية", r2(B.tE)]], [40, 16]); }
+  if (G.tab === "lg") { const L = glRows(G, true).filter(r => r.a === G.acct); return xlsOut("دفتر-الأستاذ-" + G.acct, "الأستاذ", [[G.acct + " " + glAcc(G, G.acct).name + tag], ["التاريخ", "البيان", "المرجع", "مدين", "دائن"], ...L.map(r => [r.d, r.memo || GSRC[r.src] || "", r.ref, r2(r.dr), r2(r.cr)])], [12, 40, 16, 14, 14]); }
+  if (G.tab === "coa") return xlsOut("دليل-الحسابات", "الدليل", [["الكود", "الحساب", "Account", "النوع", "الحساب الأب"], ...G.accts.map(a => [a.code, a.name, a.name_en || "", GKN[a.kind], a.parent || ""])], [8, 34, 30, 12, 10]);
+  return xlsOut("اليومية", "اليومية", [["اليومية العامة" + tag], ["التاريخ", "المصدر", "المرجع", "البيان", "الحساب", "اسم الحساب", "مدين", "دائن", "المكان"], ...glRows(G, true).map(r => [r.d, GSRC[r.src] || r.src, r.ref, r.memo, r.a, glAcc(G, r.a).name, r2(r.dr), r2(r.cr), r.loc ? locName(r.loc) : ""])], [12, 12, 16, 36, 8, 26, 14, 14, 14]); }
+
+/* ---------- settings & VAT ---------- */
+V.settings = () => { let h = header(); const st = S.store || {}, own = S.sess.role.id === "owner", vx = S.items.filter(i => i.vat_rate != null);
+  h += `<div class="grid g2"><div class="card rise"><h3>بيانات المحل</h3><div class="stack"><div class="field"><label>اسم المحل</label><input class="inp" id="stN" value="${esc(st.name || "")}"></div>
+    <div class="grid g2"><div class="field"><label>ميعاد تقفيل اليوم</label><input class="inp" type="time" id="stC" value="${esc(String(st.day_close_time || "06:00").slice(0, 5))}"></div><div class="field"><label>ميعاد فتح اليوم الجديد</label><input class="inp" type="time" id="stO" value="${esc(String(st.day_open_time || "07:00").slice(0, 5))}"></div></div>
+    <p class="dim" style="margin:0;font-size:12.5px">البيع بيتقفل بين ميعاد التقفيل وميعاد الفتح، وأي بيع بعد نص الليل وقبل التقفيل بيتحسب على اليوم اللي فات.</p>
+    <div class="grid g2"><div class="field"><label>تنبيه فرق سعر الشراء (%)</label><input class="inp num" type="number" min="1" max="100" id="stP" value="${+st.price_alert_pct || 10}"></div><div class="field"><label>أقل هامش ربح مسموح في العروض (%)</label><input class="inp num" type="number" min="0" max="90" id="stM" value="${+st.min_margin_pct || 10}"></div></div></div></div>
+   <div class="card rise"><h3>ضريبة القيمة المضافة</h3><div class="stack"><label class="row" style="gap:8px"><input type="checkbox" id="stV" ${st.vat_registered ? "checked" : ""} ${own ? "" : "disabled"}> المحل مسجّل في ضريبة القيمة المضافة</label>
+    ${own ? "" : `<p class="dim" style="margin:0;font-size:12.5px">تشغيل أو إيقاف الضريبة من المالك بس.</p>`}
+    <div id="stVbox" style="${st.vat_registered ? "" : "display:none"}" class="stack"><div class="grid g2"><div class="field"><label>رقم التسجيل الضريبي (٩ أرقام)</label><input class="inp num" id="stR" maxlength="9" inputmode="numeric" value="${esc(st.vat_rin || "")}"></div><div class="field"><label>بداية تطبيق الضريبة</label><input class="inp" type="date" id="stF" value="${esc(st.vat_from || "")}"></div>
+     <div class="field"><label>النسبة العامة (%)</label><input class="inp num" type="number" min="0" max="100" step="0.5" id="stRt" value="${st.vat_rate != null ? +st.vat_rate : 14}"></div><div class="field"><label>أسعار البيع</label><select class="inp" id="stI"><option value="1" ${st.prices_include_vat ? "selected" : ""}>شاملة الضريبة</option><option value="0" ${st.prices_include_vat ? "" : "selected"}>من غير الضريبة (تتضاف عليها)</option></select></div></div>
+     <div class="okbox" style="font-size:12.5px">الفواتير من تاريخ البداية بتحسب الضريبة لوحدها وبتتسجّل على حساب «ضريبة القيمة المضافة المستحقة». الفواتير القديمة مش بتتغيّر.</div></div></div></div></div>
+   <div id="stErr"></div><button class="btn gold rise" data-act="stSave" style="align-self:flex-start">حفظ الإعدادات</button>`;
+  h += `<div class="card rise"><h3>نسبة ضريبة مختلفة لأصناف معيّنة</h3><p class="muted" style="margin-top:0">لو صنف معفي أو له نسبة غير النسبة العامة.</p>
+   <div class="row" style="gap:6px;flex-wrap:nowrap;max-width:640px"><select class="inp" id="vxI" style="flex:2">${S.items.filter(i => i.vat_rate == null).map(i => `<option value="${i.id}">${esc(i.name)}</option>`).join("")}</select><input class="inp num" id="vxR" type="number" min="0" max="100" step="0.5" value="0" style="width:90px" title="النسبة %"><button class="btn sm" data-act="vxAdd">${ico("plus")} إضافة</button></div>
+   <div class="tw" style="margin-top:10px"><table><thead><tr><th>الصنف</th><th class="n">النسبة</th><th></th></tr></thead><tbody>${vx.map(i => `<tr><td>${esc(i.name)}</td><td class="n">${+i.vat_rate}%${+i.vat_rate === 0 ? ` <span class="chip plain">معفي</span>` : ""}</td><td><button class="btn sm ghost" data-act="vxDel" data-id="${i.id}">رجّعه للنسبة العامة</button></td></tr>`).join("") || `<tr><td colspan="3" class="muted">كل الأصناف على النسبة العامة.</td></tr>`}</tbody></table></div></div>`;
+  return h; };
+H.settings = () => { const v = $("#stV"); if (v) v.onchange = () => { $("#stVbox").style.display = v.checked ? "" : "none"; if (v.checked && !$("#stF").value) $("#stF").value = today(); }; };
+
+/* ---------- salesperson commission ---------- */
+const CSC = { dept: "قسم", group: "مجموعة", item: "صنف (تصفية)" };
+async function loadCom() { const C = S.com || { month: today().slice(0, 7), tab: "rep" };
+  const [rep, rules, tiers, tg] = await Promise.all([rpc("commission_report", { p_token: T(), p_month: C.month }), q("commission_rules", "*", x => x.order("id")), q("commission_tiers", "*", x => x.order("pct")), q("staff_targets", "*", x => x.eq("month", C.month))]);
+  await loadDir().catch(() => {});
+  C.rep = rep || []; C.cfg = { rules: rules.map(r => ({ scope: r.scope, ref: r.ref, rate: +r.rate, valid_from: r.valid_from || "", valid_to: r.valid_to || "" })), tiers: tiers.map(t => ({ pct: +t.pct, extra_rate: +t.extra_rate, bonus: +t.bonus })), targets: Object.fromEntries(tg.map(t => [t.staff_id, +t.target])) };
+  C.loaded = C.month; S.com = C; return C; }
+const comRefs = sc => sc === "dept" ? S.depts.map(d => [String(d.id), d.name]) : sc === "group" ? S.groups.map(g => [String(g.id), (S.depts.find(d => d.id === g.department_id) || {}).name + " · " + g.name]) : S.items.map(i => [i.id, i.name]);
+V.commission = () => { let h = header(); const C = S.com; if (!C || C.loaded !== C.month) { setTimeout(() => loadCom().then(() => S.route === "commission" && render()).catch(e => toast(errText(e), true)), 0); return h + `<div class="spin"></div>`; }
+  const canCfg = ["owner", "gm", "acct"].includes(S.sess.role.id), sellers = (S.dir || []).filter(x => x.active && x.role_id === "seller");
+  h = header(`<input class="inp" type="month" id="cmM" value="${C.month}" max="${today().slice(0, 7)}" style="width:160px"><button class="btn" data-act="comXls">Excel</button>`);
+  if (canCfg) h += `<div class="tabs rise">${[["rep", "تقرير الشهر"], ["cfg", "القواعد والشرايح والتارجت"]].map(([k, n]) => `<button data-act="comTab" data-k="${k}" class="${C.tab === k ? "on" : ""}">${n}</button>`).join("")}</div>`;
+  if (C.tab === "rep" || !canCfg) { const tot = C.rep.reduce((s, x) => s + +x.total, 0);
+    h += `<div class="tw rise"><table><thead><tr><th>البائع</th><th class="n">صافي المبيعات</th><th class="n">التارجت</th><th class="n">التحقيق</th><th class="n">عمولة الأصناف</th><th class="n">شريحة التارجت</th><th class="n">المكافأة</th><th class="n">الإجمالي</th></tr></thead><tbody>${C.rep.map(x => `<tr><td>${esc(x.name)}</td><td class="n">${fmt(x.net, 1)}</td><td class="n">${x.target ? fmt(x.target) : "—"}</td><td class="n">${x.attain != null ? `<span class="chip ${+x.attain >= 100 ? "ok" : +x.attain >= 80 ? "warn" : "plain"}">${x.attain}%</span>` : "—"}</td><td class="n">${fmt(x.base, 1)}</td><td class="n">${x.tier_pct != null ? `${+x.tier_pct}% ← ${fmt(x.extra, 1)}` : "—"}</td><td class="n">${+x.bonus ? fmt(x.bonus) : "—"}</td><td class="n"><b>${fmt(x.total, 1)}</b></td></tr>`).join("") || `<tr><td colspan="8" class="muted">مفيش مبيعات بأسماء بائعين في الشهر ده.</td></tr>`}${C.rep.length > 1 ? `<tr><td colspan="7"><b>الإجمالي</b></td><td class="n"><b>${fmt(tot, 1)}</b></td></tr>` : ""}</tbody></table></div>
+     <div class="okbox rise">صافي المبيعات = فواتير البائع ناقص المرتجعات، من غير الضريبة. العمولة بتتحسب بنسبة الصنف لو ليه قاعدة (تصفية)، وإلا المجموعة، وإلا القسم. ولو البائع وصل لشريحة من التارجت بياخد نسبة إضافية على كل مبيعاته + المكافأة.</div>`; }
+  else { const F = C.cfg;
+    h += `<div class="card rise"><h3>نسبة العمولة</h3><div class="stack">${F.rules.map((r, n) => `<div class="row" style="gap:6px;flex-wrap:wrap"><select class="inp" data-crs="${n}" style="width:130px">${Object.entries(CSC).map(([k, v]) => `<option value="${k}" ${r.scope === k ? "selected" : ""}>${v}</option>`).join("")}</select><select class="inp" data-crr="${n}" style="flex:2;min-width:180px">${comRefs(r.scope).map(([k, v]) => `<option value="${esc(k)}" ${String(r.ref) === String(k) ? "selected" : ""}>${esc(v)}</option>`).join("")}</select><input class="inp num" type="number" min="0" step="0.1" data-crt="${n}" value="${r.rate}" style="width:80px" title="%"><span class="dim">%</span>${r.scope === "item" ? `<input class="inp" type="date" data-crf="${n}" value="${esc(r.valid_from)}" title="من"><input class="inp" type="date" data-crto="${n}" value="${esc(r.valid_to)}" title="إلى">` : ""}<button class="btn sm ghost" data-act="crDel" data-n="${n}">✕</button></div>`).join("") || `<p class="muted" style="margin:0">لسه مفيش قواعد — مفيش عمولة على أي صنف.</p>`}
+     <button class="btn sm" data-act="crAdd" style="align-self:flex-start">${ico("plus")} قاعدة</button></div></div>
+     <div class="card rise"><h3>شرايح التارجت الشهري</h3><div class="stack">${F.tiers.map((t, n) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><span class="dim">لو حقق</span><input class="inp num" type="number" min="1" data-ctp="${n}" value="${t.pct}" style="width:80px"><span class="dim">% ياخد زيادة</span><input class="inp num" type="number" min="0" step="0.1" data-cte="${n}" value="${t.extra_rate}" style="width:80px"><span class="dim">% + مكافأة</span><input class="inp num" type="number" min="0" data-ctb="${n}" value="${t.bonus}" style="width:100px"><button class="btn sm ghost" data-act="ctDel" data-n="${n}">✕</button></div>`).join("") || `<p class="muted" style="margin:0">مفيش شرايح.</p>`}
+     <button class="btn sm" data-act="ctAdd" style="align-self:flex-start">${ico("plus")} شريحة</button></div></div>
+     <div class="card rise"><h3>تارجت ${esc(C.month)}</h3><div class="grid g2">${sellers.map(x => `<div class="field"><label>${esc(x.name)}${x.location_id ? ` <span class="dim">· ${esc(locName(x.location_id))}</span>` : ""}</label><input class="inp num" type="number" min="0" data-ctg="${x.id}" value="${F.targets[x.id] || ""}" placeholder="من غير تارجت"></div>`).join("") || `<p class="muted">مفيش بائعين — ضيفهم من شاشة الموظفين بدور «بائع».</p>`}</div></div>
+     <div id="cmErr"></div><button class="btn gold rise" data-act="comSave" style="align-self:flex-start">حفظ</button>`; }
+  return h; };
+H.commission = () => { const m = $("#cmM"); if (m) m.onchange = () => { if (m.value) { S.com.month = m.value; render(); } };
+  document.querySelectorAll("[data-crs]").forEach(e => e.onchange = () => { comSync(); const r = S.com.cfg.rules[+e.dataset.crs]; r.scope = e.value; r.ref = (comRefs(e.value)[0] || [""])[0]; render(); }); };
+function comSync() { const F = S.com && S.com.cfg; if (!F || !$("[data-act=comSave]")) return;
+  document.querySelectorAll("[data-crr]").forEach(e => { F.rules[+e.dataset.crr].ref = e.value; }); document.querySelectorAll("[data-crt]").forEach(e => { F.rules[+e.dataset.crt].rate = +e.value || 0; });
+  document.querySelectorAll("[data-crf]").forEach(e => { F.rules[+e.dataset.crf].valid_from = e.value; }); document.querySelectorAll("[data-crto]").forEach(e => { F.rules[+e.dataset.crto].valid_to = e.value; });
+  document.querySelectorAll("[data-ctp]").forEach(e => { F.tiers[+e.dataset.ctp].pct = +e.value || 0; }); document.querySelectorAll("[data-cte]").forEach(e => { F.tiers[+e.dataset.cte].extra_rate = +e.value || 0; }); document.querySelectorAll("[data-ctb]").forEach(e => { F.tiers[+e.dataset.ctb].bonus = +e.value || 0; });
+  document.querySelectorAll("[data-ctg]").forEach(e => { if (e.value === "") delete F.targets[e.dataset.ctg]; else F.targets[e.dataset.ctg] = +e.value; }); }
+
+/* ---------- offers ---------- */
+const OFK = { pct: "خصم نسبة %", amount: "خصم مبلغ", bxgy: "اشترِ X واحصل على Y", bundle: "طقم بسعر ثابت", gift: "هدية مع الشراء" };
+const OFS = { item: "أصناف", group: "مجموعات", dept: "أقسام", invoice: "الفاتورة كلها", bundle: "أصناف الطقم" };
+const OFST = { active: ["شغّال", "ok"], paused: ["متوقف مؤقتًا", "warn"], ended: ["انتهى", "plain"] };
+const DAYS = ["الأحد", "الاتنين", "التلات", "الأربع", "الخميس", "الجمعة", "السبت"];
+async function loadOffers() { const o = await q("offers", "*", x => x.order("status").order("priority", { ascending: false }).order("id", { ascending: false })); S.ofs = { list: o, tab: (S.ofs && S.ofs.tab) || "active" }; return S.ofs; }
+const ofTarget = o => { const nm = o.scope === "dept" ? id => (S.depts.find(d => String(d.id) === id) || {}).name : o.scope === "group" ? id => (S.groups.find(g => String(g.id) === id) || {}).name : id => (S.items.find(i => i.id === id) || {}).name;
+  return o.scope === "invoice" ? `الفاتورة${+o.min_total ? " من " + fmt(o.min_total) : ""}` : (o.refs || []).map(r => esc(nm(r) || "؟")).join("، "); };
+const ofValue = o => o.kind === "pct" ? `${+o.value}%` : o.kind === "amount" ? (o.scope === "invoice" ? fmt(o.value) : fmt(o.value) + " للقطعة") : o.kind === "bxgy" ? `اشترِ ${+o.buy_qty} واحصل على ${+o.get_qty} ببلاش` : o.kind === "bundle" ? `الطقم بـ ${fmt(o.value)}` : `كل ${+o.buy_qty || 1} ← ${+o.get_qty || 1} ${esc((S.items.find(i => i.id === o.gift_item) || {}).name || "")} هدية`;
+const ofWhen = o => { const d = x => new Date(x).toLocaleDateString("ar-EG", { day: "numeric", month: "short" }); return `${d(o.starts_at)}${o.ends_at ? " ← " + d(o.ends_at) : " · مفتوح"}${o.days && o.days.length ? "<br>" + o.days.map(x => DAYS[x]).join("، ") : ""}${o.hour_from ? `<br><span class="num">${String(o.hour_from).slice(0, 5)}–${String(o.hour_to).slice(0, 5)}</span>` : ""}${o.locs && o.locs.length ? "<br>" + o.locs.map(locName).map(esc).join("، ") : ""}`; };
+V.offers = () => { let h = header(); const D = S.ofs; if (!D) { setTimeout(() => loadOffers().then(() => S.route === "offers" && render()).catch(e => toast(errText(e), true)), 0); return h + `<div class="spin"></div>`; }
+  const canA = isOwnerGm() || can("offers", "a"), canE = isOwnerGm() || can("offers", "e"), now = new Date().toISOString();
+  h = header(canA ? `<button class="btn gold" data-act="ofNew">${ico("plus")} عرض جديد</button>` : "");
+  const live = D.list.filter(o => o.status === "active" && o.starts_at <= now && (!o.ends_at || o.ends_at > now));
+  h += `<div class="grid g4">${[["شغّال دلوقتي", live.length], ["مجدول لبعدين", D.list.filter(o => o.status === "active" && o.starts_at > now).length], ["متوقف مؤقتًا", D.list.filter(o => o.status === "paused").length], ["انتهى", D.list.filter(o => o.status === "ended" || (o.ends_at && o.ends_at <= now)).length]].map((k, i) => `<div class="card kpi rise ${i === 0 ? "lux" : ""}" style="--d:${i}"><div class="lbl">${k[0]}</div><div class="val">${k[1]}</div></div>`).join("")}</div>`;
+  h += `<div class="tabs rise">${[["active", "الشغّالة والمجدولة"], ["paused", "المتوقفة"], ["ended", "المنتهية"]].map(([k, n]) => `<button data-act="ofTab" data-k="${k}" class="${D.tab === k ? "on" : ""}">${n}</button>`).join("")}</div>`;
+  const L = D.list.filter(o => D.tab === "ended" ? o.status === "ended" || (o.ends_at && o.ends_at <= now) : o.status === D.tab && !(o.ends_at && o.ends_at <= now));
+  h += `<div class="tw rise"><table><thead><tr><th>العرض</th><th>على</th><th>القيمة</th><th>المدة</th><th class="n">الأولوية</th><th>الحالة</th><th></th></tr></thead><tbody>${L.map(o => { const st = o.ends_at && o.ends_at <= now && o.status !== "ended" ? ["انتهت مدته", "plain"] : o.status === "active" && o.starts_at > now ? ["مجدول", "info"] : OFST[o.status];
+    return `<tr><td><b>${esc(o.name)}</b><br><span class="dim" style="font-size:12px">${OFK[o.kind]}</span>${o.note ? `<br><span class="dim" style="font-size:12px">${esc(o.note)}</span>` : ""}</td><td style="max-width:260px">${ofTarget(o)}</td><td>${ofValue(o)}</td><td style="font-size:12.5px">${ofWhen(o)}</td><td class="n">${o.priority}</td><td><span class="chip ${st[1]}">${st[0]}</span></td>
+     <td class="row" style="gap:4px;flex-wrap:nowrap">${canE && o.status !== "ended" ? `<button class="btn sm ghost" data-act="ofEdit" data-id="${o.id}">تعديل</button>${o.status === "active" ? `<button class="btn sm ghost" data-act="ofSt" data-id="${o.id}" data-s="paused">إيقاف</button>` : `<button class="btn sm" data-act="ofSt" data-id="${o.id}" data-s="active">تشغيل</button>`}<button class="btn sm ghost" data-act="ofSt" data-id="${o.id}" data-s="ended">إنهاء</button>` : ""}${canA ? `<button class="btn sm ghost" data-act="ofCopy" data-id="${o.id}" title="استخدمه كقالب لعرض جديد">نسخ</button>` : ""}</td></tr>`; }).join("") || `<tr><td colspan="7" class="muted">مفيش عروض هنا.</td></tr>`}</tbody></table></div>
+   <div class="okbox rise">العروض مش بتتجمّع: كل صنف بياخد عرض واحد بس — الأعلى أولوية. عرض الفاتورة بيتطبّق على الأصناف اللي ما عليهاش عرض. ومينفعش عرضين بنفس الأولوية على نفس الصنف في نفس الوقت. لو حصل أي خطأ في حساب العرض، البيع بيكمل بالسعر العادي.</div>`;
+  return h; };
+const dtl = x => { if (!x) return ""; const d = new Date(x), z = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
+function ofModal(o, copy) { const x = o ? { ...o, refs: [...(o.refs || [])], locs: [...(o.locs || [])], days: [...(o.days || [])] } : { name: "", kind: "pct", scope: "item", refs: [], value: 10, buy_qty: 2, get_qty: 1, gift_item: null, min_total: null, locs: [], starts_at: new Date().toISOString(), ends_at: null, days: [], hour_from: null, hour_to: null, priority: 1, note: "" };
+  if (copy) { delete x.id; x.name = "نسخة من " + x.name; x.starts_at = new Date().toISOString(); x.ends_at = null; }
+  S.of = x; ofDraw(); }
+function ofDraw(check) { const x = S.of, scopes = x.kind === "bundle" ? ["bundle"] : x.kind === "pct" || x.kind === "amount" ? ["item", "group", "dept", "invoice"] : ["item", "group", "dept"];
+  if (!scopes.includes(x.scope)) { x.scope = scopes[0]; x.refs = []; }
+  const opts = x.scope === "invoice" ? [] : comRefs(x.scope === "bundle" ? "item" : x.scope), chosen = opts.filter(([k]) => x.refs.includes(String(k)));
+  modal(`<h2>${x.id ? "تعديل عرض" : "عرض جديد"}</h2><div class="stack" style="margin-top:10px">
+   <div class="grid g2"><div class="field"><label>اسم العرض</label><input class="inp" id="ofN" value="${esc(x.name)}" placeholder="مثال: خصم الشتا على المفروشات"></div><div class="field"><label>النوع</label><select class="inp" id="ofK">${Object.entries(OFK).map(([k, v]) => `<option value="${k}" ${x.kind === k ? "selected" : ""}>${v}</option>`).join("")}</select></div></div>
+   <div class="field"><label>العرض على</label><div class="tabs" style="margin:0">${scopes.map(s => `<button data-act="ofScope" data-k="${s}" class="${x.scope === s ? "on" : ""}">${OFS[s]}</button>`).join("")}</div></div>
+   ${x.scope !== "invoice" ? `<div class="field"><label>${OFS[x.scope]} (${chosen.length})</label><input class="inp" id="ofQ" placeholder="دوّر واختار…" autocomplete="off"><div id="ofOpts" class="stack" style="gap:2px;max-height:150px;overflow:auto;margin-top:4px"></div>
+     <div class="row" style="gap:4px;flex-wrap:wrap;margin-top:6px">${chosen.map(([k, v]) => `<span class="chip gold plain">${esc(v)} <button class="btn sm ghost" style="padding:0 4px" data-act="ofRef" data-k="${esc(k)}">✕</button></span>`).join("")}</div></div>` : `<div class="field"><label>أقل قيمة للفاتورة</label><input class="inp num" type="number" min="0" id="ofMin" value="${x.min_total || ""}" placeholder="من غير حد أدنى"></div>`}
+   <div class="grid g2">${x.kind === "pct" ? `<div class="field"><label>نسبة الخصم %</label><input class="inp num" type="number" min="0.1" max="100" step="0.5" id="ofV" value="${+x.value || ""}"></div>` : x.kind === "amount" ? `<div class="field"><label>${x.scope === "invoice" ? "الخصم على الفاتورة" : "الخصم على القطعة"} (ج.م)</label><input class="inp num" type="number" min="1" id="ofV" value="${+x.value || ""}"></div>` : x.kind === "bundle" ? `<div class="field"><label>سعر الطقم كله (ج.م)</label><input class="inp num" type="number" min="1" id="ofV" value="${+x.value || ""}"></div><div class="field"><label>سعر الأصناف منفصلة</label><div class="num" style="padding:10px 0">${fmt(chosen.reduce((s, [k]) => s + +((S.items.find(i => i.id === k) || {}).sale_price || 0), 0))}</div></div>`
+     : x.kind === "bxgy" ? `<div class="field"><label>لما يشتري</label><input class="inp num" type="number" min="1" id="ofB" value="${+x.buy_qty || 2}"></div><div class="field"><label>ياخد ببلاش (الأرخص)</label><input class="inp num" type="number" min="1" id="ofG" value="${+x.get_qty || 1}"></div>`
+     : `<div class="field"><label>الهدية</label><select class="inp" id="ofGi">${S.items.map(i => `<option value="${i.id}" ${x.gift_item === i.id ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</select></div><div class="field"><label>كل كام قطعة ← كام هدية</label><div class="row" style="gap:4px;flex-wrap:nowrap"><input class="inp num" type="number" min="1" id="ofB" value="${+x.buy_qty || 1}"><span>←</span><input class="inp num" type="number" min="1" id="ofG" value="${+x.get_qty || 1}"></div></div>`}
+    <div class="field"><label>الأولوية <span class="dim">(الأعلى بيكسب)</span></label><input class="inp num" type="number" min="1" max="99" id="ofP" value="${x.priority}"></div></div>
+   ${x.kind === "gift" ? `<p class="dim" style="margin:0;font-size:12.5px">الكاشير بيضيف الهدية للفاتورة، والسيستم بيخلّي سعرها صفر لوحده.</p>` : ""}
+   <div class="grid g2"><div class="field"><label>يبدأ</label><input class="inp" type="datetime-local" id="ofS" value="${dtl(x.starts_at)}"></div><div class="field"><label>ينتهي <span class="dim">(اختياري)</span></label><input class="inp" type="datetime-local" id="ofE" value="${dtl(x.ends_at)}"></div></div>
+   <div class="field"><label>الأيام <span class="dim">(من غير اختيار = كل يوم)</span></label><div class="row" style="gap:8px;flex-wrap:wrap">${DAYS.map((d, i) => `<label class="row" style="gap:4px"><input type="checkbox" data-ofd="${i}" ${x.days.includes(i) ? "checked" : ""}>${d}</label>`).join("")}</div></div>
+   <div class="grid g2"><div class="field"><label>من الساعة <span class="dim">(عرض بالوقت)</span></label><input class="inp" type="time" id="ofH1" value="${x.hour_from ? String(x.hour_from).slice(0, 5) : ""}"></div><div class="field"><label>لحد الساعة</label><input class="inp" type="time" id="ofH2" value="${x.hour_to ? String(x.hour_to).slice(0, 5) : ""}"></div></div>
+   <div class="field"><label>المعارض <span class="dim">(من غير اختيار = الكل)</span></label><div class="row" style="gap:10px;flex-wrap:wrap">${S.locs.filter(l => l.kind === "showroom").map(l => `<label class="row" style="gap:4px"><input type="checkbox" data-ofl="${l.id}" ${x.locs.includes(l.id) ? "checked" : ""}>${esc(l.name)}</label>`).join("")}</div></div>
+   <div class="field"><label>ملاحظة</label><input class="inp" id="ofNt" value="${esc(x.note || "")}"></div>
+   ${check ? `<div class="warnbox"><b>تحذير الهامش</b> — محسوب بعد أسوأ عمولة تقسيط على المحل (${+check.worst_comm}%)، والحد الأدنى ${+check.min_margin}%:<div style="max-height:150px;overflow:auto;margin-top:6px">${check.rows.slice(0, 40).map(r => `${esc(r.item)}: صافي <span class="num">${fmt(r.net, 1)}</span> · تكلفة <span class="num">${fmt(r.cost, 1)}</span> · ${r.level === "cost" ? `<b style="color:var(--bad)">تحت التكلفة</b>` : `هامش ${r.margin}%`}`).join("<br>")}${check.rows.length > 40 ? `<br>و ${check.rows.length - 40} صنف كمان` : ""}</div>${check.rows.some(r => r.level === "cost") && !isOwnerGm() ? `<p style="margin:6px 0 0">البيع تحت التكلفة محتاج المالك أو المدير العام.</p>` : ""}</div>` : ""}
+   <div id="ofErr"></div><div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button>${check ? `<button class="btn" data-act="ofSave" data-c="1">حفظ رغم التحذير</button>` : `<button class="btn gold" data-act="ofSave">حفظ</button>`}</div></div>`);
+  const sync = () => { x.name = $("#ofN").value; x.priority = +$("#ofP").value || 1; x.note = $("#ofNt").value; const v = $("#ofV"); if (v) x.value = +v.value || 0; const b = $("#ofB"); if (b) x.buy_qty = +b.value || 1; const g = $("#ofG"); if (g) x.get_qty = +g.value || 1; const gi = $("#ofGi"); if (gi) x.gift_item = gi.value; const mn = $("#ofMin"); if (mn) x.min_total = mn.value === "" ? null : +mn.value;
+    x.starts_at = $("#ofS").value ? new Date($("#ofS").value).toISOString() : new Date().toISOString(); x.ends_at = $("#ofE").value ? new Date($("#ofE").value).toISOString() : null;
+    x.days = [...document.querySelectorAll("[data-ofd]:checked")].map(e => +e.dataset.ofd); x.locs = [...document.querySelectorAll("[data-ofl]:checked")].map(e => +e.dataset.ofl); x.hour_from = $("#ofH1").value || null; x.hour_to = $("#ofH2").value || null; };
+  S._ofSync = sync; $("#ofK").onchange = e => { sync(); x.kind = e.target.value; ofDraw(); };
+  const qi = $("#ofQ"); if (qi) { const draw = () => { const t = norm(qi.value), L = opts.filter(([k, v]) => !x.refs.includes(String(k)) && (!t || norm(v).includes(t))).slice(0, 30); $("#ofOpts").innerHTML = L.map(([k, v]) => `<button class="btn sm ghost" style="justify-content:flex-start" data-act="ofRef" data-k="${esc(k)}">${ico("plus")} ${esc(v)}</button>`).join("") || `<span class="dim">مفيش نتايج.</span>`; }; qi.oninput = draw; draw(); }
+}
+
+async function ops4Click(k, a) {
+  const wrap = async (fn, after, box) => { busy(a, true); try { await fn(); if (after) await after(); } catch (e) { if (box && $(box)) $(box).innerHTML = `<div class="warnbox">${esc(errText(e))}</div>`; else toast(errText(e), true); busy(a, false); } };
+  const G = S.gl;
+  if (k === "glTab") { G.tab = a.dataset.k; G.page = 0; render(); }
+  else if (k === "glPage") { G.page = Math.max(0, G.page + +a.dataset.d); render(); }
+  else if (k === "glXls") glExport();
+  else if (k === "jvNew") { S.jv = null; jvModal(); }
+  else if (k === "jvAdd") { S._jvSync(); S.jv.lines.push({ a: "", dr: "", cr: "" }); jvModal(); }
+  else if (k === "jvDel") { S._jvSync(); S.jv.lines.splice(+a.dataset.n, 1); jvModal(); }
+  else if (k === "jvCancel") { S.jv = null; closeModal(); }
+  else if (k === "jvSave") { S._jvSync(); const J = S.jv, L = J.lines.filter(l => l.a && (+l.dr > 0 || +l.cr > 0));
+    if (J.lines.some(l => +l.dr > 0 && +l.cr > 0)) return ($("#jvErr").innerHTML = `<div class="warnbox">السطر الواحد يا مدين يا دائن.</div>`);
+    wrap(() => rpc("gl_manual_save", { p_token: T(), p: { date: J.date, memo: J.memo.trim(), lines: L.map(l => ({ account: l.a, dr: +l.dr || 0, cr: +l.cr || 0 })) } }).then(r => toast(r.status === "approved" ? `اتسجّل القيد ${r.no}.` : `القيد ${r.no} مستني الاعتماد.`)), async () => { S.jv = null; closeModal(); S.gl.loaded = null; render(); }, "#jvErr"); }
+  else if (k === "jvOk" || k === "jvNo") wrap(() => rpc("gl_manual_decide", { p_token: T(), p_id: a.dataset.id, p_ok: k === "jvOk" }), async () => { S.gl.loaded = null; render(); });
+  else if (k === "coaAdd") { const par = glAcc(G, a.dataset.c); modal(`<h2>حساب فرعي تحت «${esc(par.name)}»</h2><div class="stack" style="margin-top:10px"><div class="field"><label>اسم الحساب</label><input class="inp" id="coN"></div><div class="field"><label>الاسم بالإنجليزي <span class="dim">(اختياري)</span></label><input class="inp" id="coE" dir="ltr"></div><div id="coErr"></div><div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" data-act="coaSave" data-c="${par.code}">إضافة</button></div></div>`); }
+  else if (k === "coaSave") wrap(() => rpc("gl_account_save", { p_token: T(), p_parent: a.dataset.c, p_name: $("#coN").value.trim(), p_name_en: $("#coE").value.trim() }).then(c => toast("اتضاف الحساب " + c)), async () => { closeModal(); S.gl.loaded = null; render(); }, "#coErr");
+  else if (k === "perSet") { const c = a.dataset.c === "1"; if (!confirm(c ? `إقفال شهر ${a.dataset.m}؟ مش هينفع يتسجّل عليه قيد يدوي بعد كده.` : `إعادة فتح شهر ${a.dataset.m}؟`)) return; wrap(() => rpc("gl_period_set", { p_token: T(), p_month: a.dataset.m, p_close: c }), async () => { S.gl.loaded = null; render(); }); }
+  else if (k === "yearClose") { const y = +a.dataset.y; if (!confirm(`إقفال سنة ${y}؟\nصافي الربح هيترحّل للأرباح المحتجزة والـ ١٢ شهر هيتقفلوا. الخطوة دي مش بترجع.`)) return; wrap(() => rpc("gl_year_close", { p_token: T(), p_year: y }).then(r => toast(`اتقفلت السنة · صافي الربح ${fmt(r.net_profit, 1)}`)), async () => { S.gl.loaded = null; render(); }); }
+  else if (k === "stSave") { const p = { name: $("#stN").value.trim(), day_close_time: $("#stC").value, day_open_time: $("#stO").value, price_alert_pct: +$("#stP").value || 10, min_margin_pct: +$("#stM").value || 0, vat_registered: $("#stV").checked };
+    if (p.vat_registered) Object.assign(p, { vat_rin: $("#stR").value.trim(), vat_from: $("#stF").value, vat_rate: +$("#stRt").value, prices_include_vat: $("#stI").value === "1" });
+    if (p.vat_registered && !S.store.vat_registered && !confirm("تشغيل ضريبة القيمة المضافة من " + p.vat_from + "؟\nكل الفواتير من التاريخ ده هتتحسب عليها الضريبة.")) return;
+    wrap(() => rpc("store_save", { p_token: T(), p }), async () => { await loadCore(); toast("اتحفظت الإعدادات."); render(); }, "#stErr"); }
+  else if (k === "vxAdd") { const id = $("#vxI").value; if (!id) return; wrap(() => rpc("item_vat_set", { p_token: T(), p_item: id, p_rate: +$("#vxR").value || 0 }), async () => { await loadItems(); render(); }); }
+  else if (k === "vxDel") wrap(() => rpc("item_vat_set", { p_token: T(), p_item: a.dataset.id, p_rate: null }), async () => { await loadItems(); render(); });
+  else if (k === "comTab") { comSync(); S.com.tab = a.dataset.k; render(); }
+  else if (k === "crAdd") { comSync(); S.com.cfg.rules.push({ scope: "dept", ref: String((S.depts[0] || {}).id || ""), rate: 1, valid_from: "", valid_to: "" }); render(); }
+  else if (k === "crDel") { comSync(); S.com.cfg.rules.splice(+a.dataset.n, 1); render(); }
+  else if (k === "ctAdd") { comSync(); S.com.cfg.tiers.push({ pct: 100, extra_rate: 0.5, bonus: 0 }); render(); }
+  else if (k === "ctDel") { comSync(); S.com.cfg.tiers.splice(+a.dataset.n, 1); render(); }
+  else if (k === "comSave") { comSync(); const F = S.com.cfg, sellers = (S.dir || []).filter(x => x.active && x.role_id === "seller");
+    wrap(() => rpc("commission_config_save", { p_token: T(), p: { rules: F.rules.filter(r => r.ref), tiers: F.tiers.filter(t => t.pct > 0), targets: sellers.filter(x => F.targets[x.id] != null).map(x => ({ staff_id: x.id, month: S.com.month, target: F.targets[x.id] })) } }), async () => { toast("اتحفظت قواعد العمولة."); S.com.loaded = null; S.com.tab = "rep"; render(); }, "#cmErr"); }
+  else if (k === "comXls") { const C = S.com; xlsOut("عمولات-" + C.month, "العمولات", [["عمولات البائعين " + C.month], ["البائع", "صافي المبيعات", "التارجت", "التحقيق %", "عمولة الأصناف", "شريحة %", "زيادة الشريحة", "المكافأة", "الإجمالي"], ...C.rep.map(x => [x.name, +x.net, x.target != null ? +x.target : "", x.attain != null ? +x.attain : "", +x.base, x.tier_pct != null ? +x.tier_pct : "", +x.extra, +x.bonus, +x.total])], [24, 14, 12, 10, 14, 10, 14, 12, 14]); }
+  else if (k === "ofTab") { S.ofs.tab = a.dataset.k; render(); }
+  else if (k === "ofNew") ofModal(null);
+  else if (k === "ofEdit") ofModal(S.ofs.list.find(o => o.id === +a.dataset.id));
+  else if (k === "ofCopy") ofModal(S.ofs.list.find(o => o.id === +a.dataset.id), true);
+  else if (k === "ofScope") { S._ofSync(); S.of.scope = a.dataset.k; S.of.refs = []; ofDraw(); }
+  else if (k === "ofRef") { S._ofSync(); const r = a.dataset.k, i = S.of.refs.indexOf(r); if (i >= 0) S.of.refs.splice(i, 1); else S.of.refs.push(r); ofDraw(); }
+  else if (k === "ofSave") { S._ofSync(); const x = S.of, p = { ...x, confirm: a.dataset.c === "1" }; delete p.status; delete p.created_by; delete p.created_at; delete p.updated_at;
+    if (p.kind !== "gift") p.gift_item = null; if (!["bxgy", "gift"].includes(p.kind)) { p.buy_qty = null; p.get_qty = null; } if (p.scope !== "invoice") p.min_total = null; if (!p.locs.length) p.locs = null; if (!p.days.length) p.days = null; if (!p.hour_from || !p.hour_to) { p.hour_from = null; p.hour_to = null; }
+    busy(a, true);
+    try { const r = await rpc("offer_save", { p_token: T(), p }); if (!r.ok) { ofDraw(r.check); return true; } closeModal(); toast("اتحفظ العرض."); S.ofs = null; render(); }
+    catch (e) { $("#ofErr").innerHTML = `<div class="warnbox">${esc(errText(e))}</div>`; busy(a, false); } }
+  else if (k === "ofSt") { const s = a.dataset.s; if (s === "ended" && !confirm("إنهاء العرض؟ هيفضل في السجل بس مش هيرجع يشتغل.")) return; wrap(() => rpc("offer_set_status", { p_token: T(), p_id: +a.dataset.id, p_status: s }), async () => { S.ofs = null; render(); }); }
   else return false;
   return true;
 }

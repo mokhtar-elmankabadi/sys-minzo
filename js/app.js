@@ -24,6 +24,10 @@ const ERR = {
   ONLY_OWNER_CREATES_OWNER: "المالك بس اللي يضيف مالك.", ONLY_OWNER_EDITS_OWNER: "المالك بس اللي يعدّل حساب المالك.", ALREADY_SET_UP: "النظام متهيّأ قبل كده.",
   NAME_REQUIRED: "الاسم مطلوب.", BAD_EAN13: "رقم الفحص في باركود EAN-13 غلط.", IMPORT_HAS_ERRORS: "الملف فيه أخطاء — صلّحها الأول.",
   OPENING_AFTER_MOVES: "مينفعش تستورد أرصدة أول المدة لمكان اتعمل فيه حركات.", EDITED_BY_SOMEONE_ELSE: "حد تاني عدّل الصنف ده بعد ما فتحته — افتحه تاني.",
+  NO_OPEN_SHIFT: "مفيش وردية مفتوحة على درج الجهاز ده.", PLAN_REQUIRED: "اختار خطة التقسيط.", CUSTOMER_REQUIRED: "لازم اسم العميل وموبايله.", APPROVER_NOT_VALID: "رمز الموافقة غلط أو صلاحيته مش كفاية.",
+  RETURN_MORE_THAN_SOLD: "الكمية أكتر من اللي اتباع (أو رجع قبل كده).", HAS_RETURNS: "الفاتورة عليها مرتجع — مينفعش تتلغي كلها.", INSTALMENT_SETTLED: "شركة التقسيط حوّلت فلوس الفاتورة دي — مينفعش تتلغي.",
+  REASON_REQUIRED: "اكتب السبب.", REF_REQUIRED: "اكتب رقم التحويل.", HELD_ALREADY_TAKEN: "الفاتورة دي اتسترجعت قبل كده.", SELLER_CANNOT_COLLECT: "البائع بيبعت الفاتورة للكاشير — مش بيقبض.",
+  INSUFFICIENT_STOCK: "الرصيد مش كفاية", SERIAL_NOT_AVAILABLE: "المسلسل ده مش متاح في المعرض", DAY_CLOSING_WINDOW: "اليوم في وقت التقفيل — البيع مقفول لحد ميعاد الفتح.", UNDERPAID: "المدفوع أقل من المطلوب.",
   CANNOT_DISABLE_OWN_DEVICE: "مينفعش توقف الجهاز اللي شغال عليه.", NOT_SET_UP: "النظام لسه ما اتهيّأش."
 };
 function errText(e) {
@@ -34,6 +38,7 @@ function errText(e) {
   if (/Anonymous sign-ins are disabled/i.test(m)) return "تسجيل الأجهزة مقفول في Supabase — لازم يتفعّل «Anonymous sign-ins».";
   const k = m.split(":")[0].trim();
   if (k.startsWith("NOT_ALLOWED")) return "مش مسموح لدورك.";
+  if (ERR[k] && m.includes(":") && ["INSUFFICIENT_STOCK", "SERIAL_NOT_AVAILABLE"].includes(k)) return ERR[k] + ": " + m.split(":").slice(1).join(":");
   return ERR[k] || m;
 }
 async function rpc(fn, args) {
@@ -62,6 +67,7 @@ const IC = {
   users: "M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6zM9 12l2 2 4-4", devices: "M3 4h13v10H3zM7 18h5M9.5 14v4M18 8h3v12h-5v-3",
   pos: "M3 4h18v12H3zM8 20h8M12 16v4M7 8h4M7 12h6", lock: "M6 11h12v10H6zM8 11V7a4 4 0 018 0v4", plus: "M12 5v14M5 12h14",
   transfers: "M4 7h13l-3-3M20 17H7l3 3", cash: "M2 6h20v12H2zM12 15a3 3 0 100-6 3 3 0 000 6zM6 12h.01M18 12h.01",
+  inst: "M3 6h18v12H3zM3 10h18M7 15h3M14 15h3",
   menu: "M3 6h18M3 12h18M3 18h18", moon: "M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z", out: "M15 3h5v18h-5M10 17l5-5-5-5M15 12H3"
 };
 const ico = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${IC[k]}"/></svg>`;
@@ -199,10 +205,10 @@ const stockOf = (id, loc) => S.stock.filter(s => s.item_id === id && (loc == nul
 /* =====================================================================
    SHELL
    ===================================================================== */
-const NAV = [["التشغيل", ["dash", "pos", "stock", "transfers"]], ["المال", ["cash"]], ["التجارة", ["items", "io"]], ["النظام", ["users", "devices"]]];
-const NAME = { pos: "نقطة البيع", cash: "الخزنة والورديات", transfers: "التحويلات", dash: "لوحة التحكم", items: "الأصناف", io: "استيراد الأصناف والأرصدة", stock: "المخزون", users: "الموظفين والرموز", devices: "الأجهزة" };
-const SUB = { pos: "", cash: "رصيد الأدراج والخزنة، واعتماد تسليم الورديات، وفواتير الأيام الأخيرة وإلغاؤها.", transfers: "نقل البضاعة بين المعرضين والمخزن بطلب واعتماد وشحن واستلام.", dash: "نظرة سريعة على الأصناف والمخزون في كل مكان.", items: "كل صنف بباركوده ووحدته وسعره، ومسلسل وضمان للأجهزة.", io: "استورد الأصناف من Excel أو CSV بأي شكل أعمدة، ومعاها أرصدة أول المدة.", stock: "رصيد كل صنف في المعرضين والمخزن.", users: "ضيف موظفين وحدد دورهم وفرعهم، وادّيهم رمز مؤقت يغيّروه أول دخول.", devices: "اعتمد الأجهزة الجديدة وحدد نوع كل جهاز ومكانه." };
-const allowed = r => ({ pos: can("pos", "a"), cash: can("cash") || can("close"), transfers: can("transfers"), dash: can("dash") || can("items"), items: can("items"), io: can("io", "i") && can("items", "a"), stock: can("stock") || can("items"), users: has("users"), devices: has("devices") })[r];
+const NAV = [["التشغيل", ["dash", "pos", "stock", "transfers"]], ["المال", ["cash", "inst"]], ["التجارة", ["items", "io"]], ["النظام", ["users", "devices"]]];
+const NAME = { inst: "شركات التقسيط", pos: "نقطة البيع", cash: "الخزنة والورديات", transfers: "التحويلات", dash: "لوحة التحكم", items: "الأصناف", io: "استيراد الأصناف والأرصدة", stock: "المخزون", users: "الموظفين والرموز", devices: "الأجهزة" };
+const SUB = { inst: "البيع بالتقسيط عن طريق ValU وأمان وكونتكت وغيرهم: الخطط، ومين بيشيل العمولة، والمستحق عند كل شركة لحد ما تحوّل.", pos: "", cash: "رصيد الأدراج والخزنة، واعتماد تسليم الورديات، وفواتير الأيام الأخيرة وإلغاؤها.", transfers: "نقل البضاعة بين المعرضين والمخزن بطلب واعتماد وشحن واستلام.", dash: "نظرة سريعة على الأصناف والمخزون في كل مكان.", items: "كل صنف بباركوده ووحدته وسعره، ومسلسل وضمان للأجهزة.", io: "استورد الأصناف من Excel أو CSV بأي شكل أعمدة، ومعاها أرصدة أول المدة.", stock: "رصيد كل صنف في المعرضين والمخزن.", users: "ضيف موظفين وحدد دورهم وفرعهم، وادّيهم رمز مؤقت يغيّروه أول دخول.", devices: "اعتمد الأجهزة الجديدة وحدد نوع كل جهاز ومكانه." };
+const allowed = r => ({ inst: can("inst") || ["owner", "gm"].includes(S.sess.role.id), pos: can("pos", "a"), cash: can("cash") || can("close"), transfers: can("transfers"), dash: can("dash") || can("items"), items: can("items"), io: can("io", "i") && can("items", "a"), stock: can("stock") || can("items"), users: has("users"), devices: has("devices") })[r];
 
 async function enterApp() {
   $("#gate").hidden = true; $("#app").hidden = false;
@@ -411,7 +417,7 @@ function devModal(d) {
    ===================================================================== */
 const PAYN = { cash: "نقدي", card: "فيزا", insta: "إنستاباي", wallet: "محفظة" };
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
-const P = { cart: [], disc: 0, pin: "", cust: { name: "", phone: "" }, seller: "", pay: { cash: "", card: "", insta: "", wallet: "" }, dep: "all", q: "", shift: undefined, serials: [] };
+const P = { cart: [], disc: 0, pin: "", cust: { name: "", phone: "" }, seller: "", plan: "", heldId: null, pay: { cash: "", card: "", insta: "", wallet: "", inst: "" }, dep: "all", q: "", shift: undefined, serials: [] };
 const today = () => new Date(Date.now() + 2 * 3600e3).toISOString().slice(0, 10);
 async function loadDir() { if (!S.dir) S.dir = await rpc("staff_directory", { p_token: T() }); return S.dir; }
 const who = id => ((S.dir || []).find(x => x.id === id) || {}).name || "—";
@@ -443,11 +449,11 @@ V.pos = () => {
   let h = header();
   if (!loc || (S.locs.find(l => l.id === loc) || {}).kind !== "showroom") return h + `<div class="card lux rise" style="text-align:center"><h3 style="justify-content:center">الجهاز ده مش مربوط بمعرض</h3><p class="muted">البيع بيتم من جهاز مربوط بمعرض عشان الدرج والوردية. المالك أو المدير العام يحدد مكان الجهاز من شاشة «الأجهزة».</p>${has("devices") ? `<button class="btn gold" data-go="devices">شاشة الأجهزة</button>` : ""}</div>`;
   if (P.shift === undefined) { setTimeout(posShift, 0); return h + `<div class="spin"></div>`; }
-  if (S.sess.role.id === "seller") return h + `<div class="card rise"><p class="muted">دور «البائع» بيجهّز الفاتورة ويبعتها للكاشير — الجزء ده جاي في الخطوة الجاية. لحد دلوقتي البيع من حساب الكاشير.</p></div>`;
-  if (!P.shift) return h + `<div class="card lux rise" style="max-width:480px"><h3>مفيش وردية مفتوحة على درج ${esc(locName(loc))}</h3><div class="field"><label>رصيد الدرج في أول الوردية (الفكّة)</label><input class="inp num" id="shFloat" type="number" min="0" value="0"></div><button class="btn gold" style="margin-top:10px" data-act="shOpen">فتح وردية</button></div>`;
+  const isSeller = S.sess.role.id === "seller";
+  if (!P.shift && !isSeller) return h + `<div class="card lux rise" style="max-width:480px"><h3>مفيش وردية مفتوحة على درج ${esc(locName(loc))}</h3><div class="field"><label>رصيد الدرج في أول الوردية (الفكّة)</label><input class="inp num" id="shFloat" type="number" min="0" value="0"></div><button class="btn gold" style="margin-top:10px" data-act="shOpen">فتح وردية</button></div>`;
   const q = qGet(), c = cartCalc(), max = +S.sess.role.max_discount_pct || 0;
   const items = S.items.filter(i => (P.dep === "all" || i.department_id === +P.dep) && (!P.q || norm(i.name + " " + (i.barcode || "") + " " + i.code).includes(norm(P.q))));
-  h = `<div class="ph"><div><div class="eyebrow">${esc(locName(loc))} · وردية ${esc(P.shift.cashier_name)} من ${new Date(P.shift.opened_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</div><h1>${NAME.pos}</h1></div><div class="acts">${q.length ? `<span class="chip warn">${q.length} فاتورة محفوظة على الجهاز</span>` : ""}<button class="btn sm" data-act="shHand">تسليم الوردية</button></div></div>`;
+  h = `<div class="ph"><div><div class="eyebrow">${esc(locName(loc))}${P.shift ? ` · وردية ${esc(P.shift.cashier_name)} من ${new Date(P.shift.opened_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}` : " · البائع بيجهّز الفاتورة للكاشير"}${P.heldNo ? ` · <b>${esc(P.heldNo)}</b>` : ""}</div><h1>${NAME.pos}</h1></div><div class="acts">${q.length ? `<span class="chip warn">${q.length} فاتورة محفوظة على الجهاز</span>` : ""}${isSeller ? "" : `<button class="btn sm" data-act="heldList">المعلّقة</button><button class="btn sm" data-act="shHand">تسليم الوردية</button>`}</div></div>`;
   h += `<div class="pos"><div class="stack" style="gap:12px;min-width:0">
    <div class="scan">${ico("items")}<input id="posQ" placeholder="امسح الباركود أو اكتب اسم الصنف" value="${esc(P.q)}" autocomplete="off"></div>
    <div class="tabs">${[["all", "الكل"], ...S.depts.map(x => [String(x.id), x.name])].map(([k, n]) => `<button data-act="posDep" data-k="${k}" class="${String(P.dep) === k ? "on" : ""}">${esc(n)}</button>`).join("")}</div>
@@ -462,12 +468,13 @@ V.pos = () => {
     ${c.disc ? `<div class="tot up"><span>الخصم</span><span class="num">−${fmt(c.disc, 1)}</span></div>` : ""}
     ${c.vatOn ? `<div class="tot dim"><span>${c.incl ? "منها ضريبة القيمة المضافة" : "ضريبة القيمة المضافة"}</span><span class="num">${fmt(c.vat, 1)}</span></div>` : ""}
     <div class="tot big"><span>المطلوب</span><span class="num">${fmt(c.total, 1)}</span></div></div>
-   <div class="field"><label>العميل ${P.cart.some(l => l.it.serial_required) ? `<b style="color:var(--warn)">— إجباري للأجهزة</b>` : `<span class="dim">(اختياري)</span>`}</label><div class="row" style="flex-wrap:nowrap"><input class="inp" id="cName" placeholder="الاسم" value="${esc(P.cust.name)}"><input class="inp num" id="cPhone" placeholder="01xxxxxxxxx" value="${esc(P.cust.phone)}" inputmode="tel"></div></div>
+   <div class="field"><label>العميل ${P.cart.some(l => l.it.serial_required) || +P.pay.inst > 0 ? `<b style="color:var(--warn)">— إجباري للأجهزة</b>` : `<span class="dim">(اختياري)</span>`}</label><div class="row" style="flex-wrap:nowrap"><input class="inp" id="cName" placeholder="الاسم" value="${esc(P.cust.name)}"><input class="inp num" id="cPhone" placeholder="01xxxxxxxxx" value="${esc(P.cust.phone)}" inputmode="tel"></div></div>
    <div class="field"><label>البائع <span class="dim">(للعمولة)</span></label><select class="inp" id="posSeller"><option value="">— بدون —</option>${(S.dir || []).filter(x => x.active && x.role_id === "seller" && (!x.location_id || x.location_id === loc)).map(x => `<option value="${x.id}" ${P.seller === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>
-   <div class="field"><label>الدفع <button class="btn sm ghost" data-act="payAll" style="margin-inline-start:6px">الكل نقدي</button></label><div class="grid g2" style="gap:6px">${Object.entries(PAYN).map(([k, n]) => `<label class="row" style="gap:6px;flex-wrap:nowrap"><span class="dim" style="width:64px;font-size:12.5px">${n}</span><input class="inp num" type="number" min="0" data-pay="${k}" value="${esc(P.pay[k])}"></label>`).join("")}</div>
+   ${isSeller ? `<div id="posErr"></div><div class="row" style="flex-wrap:nowrap"><button class="btn ghost" data-act="posClear">تفريغ</button><button class="btn gold" style="flex:1" data-act="heldSend">إرسال للكاشير · <span class="num">${fmt(c.total, 1)}</span></button></div>` : `<div class="field"><label>الدفع <button class="btn sm ghost" data-act="payAll" style="margin-inline-start:6px">الكل نقدي</button></label><div class="grid g2" style="gap:6px">${Object.entries(PAYN).map(([k, n]) => `<label class="row" style="gap:6px;flex-wrap:nowrap"><span class="dim" style="width:64px;font-size:12.5px">${n}</span><input class="inp num" type="number" min="0" data-pay="${k}" value="${esc(P.pay[k])}"></label>`).join("")}</div>
+    ${(S.finPl || []).some(p => p.active) ? `<div class="row" style="gap:6px;flex-wrap:nowrap;margin-top:6px"><span class="dim" style="width:64px;font-size:12.5px">تقسيط</span><select class="inp" id="posPlan" style="flex:2;font-size:12.5px"><option value="">— الشركة والخطة —</option>${S.finPl.filter(p => p.active && (S.finCo.find(c0 => c0.id === p.company_id) || {}).active).map(p => `<option value="${p.id}" ${+P.plan === p.id ? "selected" : ""}>${esc(planName(p.id))} — ${p.payer === "store" ? "على المحل " + (+p.rate) + "%" : "على العميل"}</option>`).join("")}</select><input class="inp num" type="number" min="0" data-pay="inst" value="${esc(P.pay.inst)}" style="flex:1"></div>${P.plan && +P.pay.inst > 0 ? (() => { const pl = S.finPl.find(x => x.id === +P.plan), co = S.finCo.find(x => x.id === pl.company_id), cm = pl.payer === "store" ? +P.pay.inst * pl.rate / 100 : 0; return `<div class="${cm ? "warnbox" : "okbox"}" style="font-size:12.5px;margin-top:6px">الشركة هتحوّل ${fmt(+P.pay.inst - cm, 1)} بعد ${co.transfer_days} يوم${cm ? " · عمولة على المحل " + fmt(cm, 1) : ""}</div>`; })() : ""}` : ""}
     ${c.paid ? `<div class="tot" style="margin-top:6px"><span class="muted">${c.change >= 0 ? "الباقي للعميل" : "ناقص"}</span><span class="num" style="color:${c.change >= 0 ? "var(--ok)" : "var(--bad)"}">${fmt(Math.abs(c.change), 1)}</span></div>` : ""}</div>
    <div id="posErr"></div>
-   <div class="row" style="flex-wrap:nowrap"><button class="btn ghost" data-act="posClear">تفريغ</button><button class="btn gold" style="flex:1" data-act="posPay">إتمام البيع · <span class="num">${fmt(c.total, 1)}</span></button></div>` : ""}</div></div>`;
+   <div class="row" style="flex-wrap:nowrap"><button class="btn ghost" data-act="posClear">تفريغ</button><button class="btn gold" style="flex:1" data-act="posPay">إتمام البيع · <span class="num">${fmt(c.total, 1)}</span></button></div>`}` : ""}</div></div>`;
   return h;
 };
 H.pos = () => {
@@ -479,13 +486,14 @@ H.pos = () => {
   const pin = $("#posPin"); if (pin) pin.oninput = () => { P.pin = pin.value; };
   const cn = $("#cName"), cp = $("#cPhone"); if (cn) { cn.oninput = () => { P.cust.name = cn.value; }; cp.oninput = () => { P.cust.phone = cp.value; }; }
   const sl = $("#posSeller"); if (sl) sl.onchange = () => { P.seller = sl.value; };
+  const pp = $("#posPlan"); if (pp) pp.onchange = () => { P.plan = pp.value; if (P.plan && !(+P.pay.inst > 0)) { const c = cartCalc(); P.pay = { cash: "", card: "", insta: "", wallet: "", inst: String(c.total) }; } render(); };
   document.querySelectorAll("[data-pay]").forEach(x => x.onchange = () => { P.pay[x.dataset.pay] = x.value; render(); });
   document.querySelectorAll("[data-ser]").forEach(x => x.onchange = () => { P.cart[+x.dataset.ser].serial = x.value; });
   document.querySelectorAll("[data-mqty]").forEach(x => x.onchange = () => { P.cart[+x.dataset.mqty].qty = Math.max(0.1, +x.value || 0.1); render(); });
   document.querySelectorAll("[data-waste]").forEach(x => x.onchange = () => { P.cart[+x.dataset.waste].waste = Math.max(0, +x.value || 0); });
 };
 async function posShift() {
-  try { const [sh, ser] = await Promise.all([rpc("shift_current", { p_token: T() }), q("serials", "serial,item_id", x => x.eq("location_id", S.sess.device.location_id).eq("status", "in_stock").limit(5000)), loadDir()]);
+  try { const [sh, ser] = await Promise.all([rpc("shift_current", { p_token: T() }), q("serials", "serial,item_id", x => x.eq("location_id", S.sess.device.location_id).eq("status", "in_stock").limit(5000)), loadDir(), loadFin()]);
     P.shift = sh; P.serials = ser; } catch (e) { P.shift = null; toast(errText(e), true); }
   if (S.route === "pos") render();
 }
@@ -498,12 +506,14 @@ async function posPay(btn) {
   const c = cartCalc(), err = m => ($("#posErr").innerHTML = `<div class="warnbox">${esc(m)}</div>`);
   if (P.cart.some(l => l.it.serial_required && !l.serial)) return err("اختار المسلسل لكل جهاز.");
   if (P.cart.some(l => l.it.serial_required) && (!P.cust.name.trim() || !/^01\d{9}$/.test(P.cust.phone.trim()))) return err("الأجهزة محتاجة اسم العميل وموبايل صحيح.");
+  if (+P.pay.inst > 0 && !P.plan) return err("اختار شركة التقسيط والخطة.");
+  if (+P.pay.inst > 0 && (!P.cust.name.trim() || !/^01\d{9}$/.test(P.cust.phone.trim()))) return err("التقسيط محتاج اسم العميل وموبايل صحيح.");
   if (P.cust.phone && !/^01\d{9}$/.test(P.cust.phone.trim())) return err("رقم الموبايل غلط.");
   if (c.paid < c.total - 0.004) return err("المدفوع أقل من المطلوب.");
   const nonCash = c.paid - (+P.pay.cash || 0); if (nonCash > c.total + 0.004) return err("الفيزا والمحافظ أكتر من المطلوب — الباقي بيرجع من النقدي بس.");
   const p = { client_uuid: uuid(), lines: P.cart.map(l => ({ item_id: l.id, qty: l.qty, serial: l.serial || null, cut_waste_m: l.waste || null })), discount_pct: P.disc, approver_pin: P.disc > (+S.sess.role.max_discount_pct || 0) ? P.pin : null,
     customer: P.cust.phone ? { name: P.cust.name.trim(), phone: P.cust.phone.trim() } : null, seller_id: P.seller || null,
-    payments: Object.entries(P.pay).filter(([, v]) => +v > 0).map(([m, v]) => ({ method: m, amount: +v })) };
+    payments: Object.entries(P.pay).filter(([, v]) => +v > 0).map(([m, v]) => m === "inst" ? { method: m, amount: +v, plan_id: +P.plan } : { method: m, amount: +v }), held_id: P.heldId || null };
   busy(btn, true);
   try { const r = await rpc("sale_post", { p_token: T(), p }); posDone(r, c); }
   catch (e) {
@@ -513,13 +523,13 @@ async function posPay(btn) {
 }
 function posDone(r, c) {
   const lines = P.cart.map(l => ({ n: l.it.name, q: l.qty, u: UNITS[l.it.unit], p: l.it.sale_price, sn: l.serial }));
-  const pays = Object.entries(P.pay).filter(([, v]) => +v > 0);
-  P.cart = []; P.disc = 0; P.pin = ""; P.cust = { name: "", phone: "" }; P.seller = ""; P.pay = { cash: "", card: "", insta: "", wallet: "" };
+  const pays = Object.entries(P.pay).filter(([, v]) => +v > 0); P.planDone = P.plan;
+  P.cart = []; P.disc = 0; P.pin = ""; P.cust = { name: "", phone: "" }; P.seller = ""; P.plan = ""; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" };
   modal(`<h2>${r.offline ? "اتحفظت على الجهاز" : "تم البيع"}</h2>${r.offline ? `<div class="warnbox">مفيش نت — الفاتورة اتحفظت على الجهاز وهتتبعت لوحدها أول ما النت يرجع.</div>` : ""}
    <div class="receipt" id="rcpt"><div style="text-align:center;font-family:var(--f-display);font-size:16px">${esc(S.store.name)}</div><div style="text-align:center" class="dim">${esc(locName(S.sess.device.location_id))} · ${new Date().toLocaleString("ar-EG")}</div><div style="text-align:center" class="num">${esc(r.no)}</div><div class="hr" style="margin:8px 0"></div>
    ${lines.map(x => `<div class="r"><span>${esc(x.n)} × ${num(x.q)}${x.sn ? `<br><span class="dim">SN ${esc(x.sn)}</span>` : ""}</span><span>${fmt(x.p * x.q, 1)}</span></div>`).join("")}
    ${c.disc ? `<div class="r"><span>خصم</span><span>−${fmt(c.disc, 1)}</span></div>` : ""}${c.vatOn ? `<div class="r"><span>ض.ق.م</span><span>${fmt(r.vat != null ? r.vat : c.vat, 1)}</span></div>` : ""}
-   <div class="hr" style="margin:8px 0"></div><div class="r"><b>الإجمالي</b><b>${fmt(r.total, 1)}</b></div>${pays.map(([k, v]) => `<div class="r"><span>${PAYN[k]}</span><span>${fmt(v, 1)}</span></div>`).join("")}${(r.change || 0) > 0 ? `<div class="r"><span>الباقي</span><span>${fmt(r.change, 1)}</span></div>` : ""}</div>
+   <div class="hr" style="margin:8px 0"></div><div class="r"><b>الإجمالي</b><b>${fmt(r.total, 1)}</b></div>${pays.map(([k, v]) => `<div class="r"><span>${k === "inst" ? "تقسيط · " + esc(planName(P.planDone)) : PAYN[k]}</span><span>${fmt(v, 1)}</span></div>`).join("")}${(r.change || 0) > 0 ? `<div class="r"><span>الباقي</span><span>${fmt(r.change, 1)}</span></div>` : ""}</div>
    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn" data-act="rcptPrint">طباعة</button><button class="btn gold" data-act="rcptOk">فاتورة جديدة</button></div>`);
   loadItems().then(() => { P.shift = undefined; }).catch(() => {});
 }
@@ -547,7 +557,7 @@ V.cash = () => { let h = header(); const C = S.cash; if (!C) { setTimeout(loadCa
   const pend = C.shifts.filter(s => s.status === "handed"), canAp = can("close", "p");
   h += `<div class="grid g4">${C.accts.map((a, i) => `<div class="card kpi rise ${i === 0 ? "lux" : ""}" style="--d:${i}"><div class="lbl">${esc(a.name)}</div><div class="val">${fmt(a.bal)}</div><div class="dim" style="font-size:12px">نقدي</div></div>`).join("")}</div>`;
   h += `<div class="card rise"><h3>الورديات</h3><div class="tw"><table><thead><tr><th>المكان</th><th>الكاشير</th><th>من</th><th>إلى</th><th class="n">المفروض</th><th class="n">المعدود</th><th class="n">الفرق</th><th>الحالة</th><th></th></tr></thead><tbody>${C.shifts.map(s => `<tr><td>${esc(locName(s.location_id))}</td><td>${esc(who(s.cashier_id))}</td><td class="num dim">${new Date(s.opened_at).toLocaleString("ar-EG")}</td><td class="num dim">${s.closed_at ? new Date(s.closed_at).toLocaleString("ar-EG") : "—"}</td><td class="n">${s.expected_cash != null ? fmt(s.expected_cash, 1) : "—"}</td><td class="n">${s.counted_cash != null ? fmt(s.counted_cash, 1) : "—"}</td><td class="n" style="color:${+s.diff < 0 ? "var(--bad)" : +s.diff > 0 ? "var(--warn)" : ""}">${s.diff != null ? fmt(s.diff, 1) : "—"}${s.diff_reason ? `<br><span class="dim" style="font-size:12px">${esc(s.diff_reason)}</span>` : ""}</td><td><span class="chip ${s.status === "open" ? "info" : s.status === "handed" ? "warn" : "ok"}">${{ open: "مفتوحة", handed: "مستنية اعتماد", approved: "معتمدة" }[s.status]}</span></td><td>${s.status === "handed" && canAp ? `<button class="btn sm gold" data-act="shAppr" data-id="${s.id}">اعتماد</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="9" class="muted">لسه مفيش ورديات.</td></tr>`}</tbody></table></div>${pend.length && !canAp ? `<p class="dim">في ${pend.length} تسليم مستني اعتماد مدير.</p>` : ""}</div>`;
-  h += `<div class="card rise"><h3>فواتير آخر ٣ أيام</h3><div class="tw"><table><thead><tr><th>الفاتورة</th><th>المكان</th><th>الكاشير</th><th>الوقت</th><th class="n">الإجمالي</th>${seeCost() ? `<th class="n">الربح</th>` : ""}<th>الحالة</th><th></th></tr></thead><tbody>${C.sales.map(x => `<tr><td class="num">${esc(x.no)}</td><td>${esc(locName(x.location_id))}</td><td>${esc(who(x.cashier_id))}</td><td class="num dim">${new Date(x.created_at).toLocaleString("ar-EG")}</td><td class="n">${fmt(x.total, 1)}</td>${seeCost() ? `<td class="n">${fmt(x.total - x.vat - x.cost, 1)}</td>` : ""}<td>${x.status === "void" ? `<span class="chip bad">ملغاة</span><br><span class="dim" style="font-size:12px">${esc(x.void_reason || "")}</span>` : `<span class="chip ok">سارية</span>`}</td><td>${x.status === "posted" && (["owner", "gm"].includes(S.sess.role.id) || has("voidInvoice") || has("voidRequest")) ? `<button class="btn sm ghost" data-act="saleVoid" data-id="${x.id}" data-no="${esc(x.no)}">إلغاء</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">لسه مفيش فواتير.</td></tr>`}</tbody></table></div></div>`;
+  h += `<div class="card rise"><h3>فواتير آخر ٣ أيام</h3><div class="tw"><table><thead><tr><th>الفاتورة</th><th>المكان</th><th>الكاشير</th><th>الوقت</th><th class="n">الإجمالي</th>${seeCost() ? `<th class="n">الربح</th>` : ""}<th>الحالة</th><th></th></tr></thead><tbody>${C.sales.map(x => `<tr><td class="num">${esc(x.no)}</td><td>${esc(locName(x.location_id))}</td><td>${esc(who(x.cashier_id))}</td><td class="num dim">${new Date(x.created_at).toLocaleString("ar-EG")}</td><td class="n">${fmt(x.total, 1)}</td>${seeCost() ? `<td class="n">${fmt(x.total - x.vat - x.cost, 1)}</td>` : ""}<td>${x.status === "void" ? `<span class="chip bad">ملغاة</span><br><span class="dim" style="font-size:12px">${esc(x.void_reason || "")}</span>` : `<span class="chip ok">سارية</span>`}</td><td class="row" style="gap:4px;flex-wrap:nowrap">${x.status === "posted" && can("returns", "a") ? `<button class="btn sm ghost" data-act="saleRet" data-id="${x.id}">مرتجع</button>` : ""}${x.status === "posted" && (["owner", "gm"].includes(S.sess.role.id) || has("voidInvoice") || has("voidRequest")) ? `<button class="btn sm ghost" data-act="saleVoid" data-id="${x.id}" data-no="${esc(x.no)}">إلغاء</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">لسه مفيش فواتير.</td></tr>`}</tbody></table></div></div>`;
   return h; };
 async function loadCash() {
   try { await loadDir(); const since = new Date(Date.now() - 3 * 864e5).toISOString();
@@ -603,8 +613,8 @@ async function opsClick(k, a) {
   else if (k === "posAdd") { posAdd(a.dataset.id); render(); }
   else if (k === "posQty") { const l = P.cart[+a.dataset.n]; l.qty += +a.dataset.d; if (l.qty <= 0) P.cart.splice(+a.dataset.n, 1); render(); }
   else if (k === "posDel") { P.cart.splice(+a.dataset.n, 1); render(); }
-  else if (k === "posClear") { P.cart = []; P.disc = 0; P.pay = { cash: "", card: "", insta: "", wallet: "" }; render(); }
-  else if (k === "payAll") { const c = cartCalc(); P.pay = { cash: String(c.total), card: "", insta: "", wallet: "" }; render(); }
+  else if (k === "posClear") { P.cart = []; P.disc = 0; P.plan = ""; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" }; render(); }
+  else if (k === "payAll") { const c = cartCalc(); P.pay = { cash: String(c.total), card: "", insta: "", wallet: "", inst: "" }; P.plan = ""; render(); }
   else if (k === "posPay") posPay(a);
   else if (k === "rcptPrint") { const w = window.open("", "_blank", "width=380,height=600"); if (!w) return toast("المتصفح منع نافذة الطباعة.", true); w.document.write(`<html dir="rtl"><head><title>إيصال</title><style>body{font-family:Tahoma,Arial;font-size:12px;width:72mm;margin:0 auto}.r{display:flex;justify-content:space-between;gap:8px;margin:3px 0}.dim{color:#666}.hr{border-top:1px dashed #000}</style></head><body>${$("#rcpt").innerHTML}<script>print();setTimeout(()=>close(),500)<\/script></body></html>`); w.document.close(); }
   else if (k === "rcptOk") { closeModal(); render(); }
@@ -626,6 +636,103 @@ async function opsClick(k, a) {
   else if (k === "trRecv") trRecvModal(S.tr.find(t => t.id === a.dataset.id));
   else if (k === "trRecvGo") { const rec = {}; document.querySelectorAll("[data-rcv]").forEach(x => { rec[x.dataset.rcv] = +x.value; }); wrap(() => rpc("transfer_receive", { p_token: T(), p_id: a.dataset.id, p_received: rec, p_reason: $("#rRsn").value.trim() || null }), async () => { closeModal(); toast("اتستلم."); S.tr = null; await loadItems(); render(); }); }
   else if (k === "mClose") closeModal();
+  else return ops2Click(k, a);
+  return true;
+}
+
+
+/* =====================================================================
+   PHASE 2a · held invoices, instalment companies, partial returns
+   ===================================================================== */
+async function loadFin() { const [co, pl] = await Promise.all([q("finance_companies", "*", x => x.order("name")), q("finance_plans", "*", x => x.order("months"))]); S.finCo = co; S.finPl = pl; return S.finPl; }
+const planName = id => { const p = (S.finPl || []).find(x => x.id === +id); if (!p) return "—"; const c = (S.finCo || []).find(x => x.id === p.company_id) || {}; return `${c.name} · ${p.name}`; };
+
+/* ---------- seller sends, cashier picks up ---------- */
+async function heldSend(btn) {
+  if (!P.cart.length) return;
+  const p = { lines: P.cart.map(l => ({ item_id: l.id, qty: l.qty, serial: l.serial || null, cut_waste_m: l.waste || null })), customer: P.cust.phone ? { name: P.cust.name.trim(), phone: P.cust.phone.trim() } : null, discount_pct: P.disc, seller_id: P.seller || null };
+  busy(btn, true);
+  try { const r = await rpc("held_create", { p_token: T(), p }); toast(`الفاتورة ${r.no} اتبعتت للكاشير.`); P.cart = []; P.disc = 0; P.cust = { name: "", phone: "" }; render(); }
+  catch (e) { toast(errText(e), true); busy(btn, false); }
+}
+async function heldList() {
+  try { await loadDir(); const L = await q("held_sales", "*", x => x.eq("status", "open").eq("location_id", S.sess.device.location_id).order("created_at"));
+    modal(`<h2>الفواتير المعلّقة</h2><div class="stack" style="margin-top:10px">${L.map(h => { const n = (h.payload.lines || []).length, tot = (h.payload.lines || []).reduce((a, l) => { const it = S.items.find(i => i.id === l.item_id); return a + (it ? it.sale_price * l.qty : 0); }, 0);
+      return `<div class="row between card" style="padding:12px"><span><b class="num">${esc(h.no)}</b> · ${new Date(h.created_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}${h.seller_id ? ` · <span class="chip gold plain">من ${esc(who(h.seller_id))}</span>` : ""}<br><span class="dim" style="font-size:12.5px">${n} صنف · ${fmt(tot)}${h.payload.customer ? " · " + esc(h.payload.customer.name || "") : ""}</span></span><span class="row" style="gap:6px"><button class="btn sm gold" data-act="heldTake" data-id="${h.id}">استرجاع</button><button class="btn sm ghost" data-act="heldCancel" data-id="${h.id}">إلغاء</button></span></div>`; }).join("") || `<p class="muted">مفيش فواتير معلّقة.</p>`}<button class="btn ghost" data-act="mClose">إغلاق</button></div>`); }
+  catch (e) { toast(errText(e), true); }
+}
+async function heldTake(id) {
+  if (P.cart.length) return toast("فضّي الفاتورة الحالية الأول.", true);
+  try { const h = await rpc("held_take", { p_token: T(), p_id: id });
+    P.cart = (h.lines || []).filter(l => S.items.some(i => i.id === l.item_id)).map(l => ({ id: l.item_id, qty: +l.qty, serial: l.serial || "", waste: l.cut_waste_m || 0 }));
+    P.cust = h.customer ? { name: h.customer.name || "", phone: h.customer.phone || "" } : { name: "", phone: "" }; P.seller = h.seller_id || ""; P.disc = +h.discount_pct || 0; P.heldId = id; P.heldNo = h.held_no;
+    closeModal(); toast(`اتسترجعت ${h.held_no}.`); render(); }
+  catch (e) { toast(errText(e), true); }
+}
+
+/* ---------- returns ---------- */
+async function returnModal(saleId) {
+  try { const [sale, lines] = await Promise.all([q("sales", "*", x => x.eq("id", saleId)), q("sale_lines", "*", x => x.eq("sale_id", saleId))]);
+    const done = await q("return_lines", "sale_line_id,qty,returns!inner(sale_id)", x => x.eq("returns.sale_id", saleId)).catch(() => []);
+    const s = sale[0], dq = id => done.filter(d => d.sale_line_id === id).reduce((a, d) => a + +d.qty, 0), approve = can("returns", "p");
+    S._ret = { sale: s, lines };
+    modal(`<h2>مرتجع على ${esc(s.no)}</h2><p class="muted" style="margin:0 0 10px">${new Date(s.created_at).toLocaleString("ar-EG")} · ${fmt(s.total, 1)}</p><div class="stack">
+     ${lines.map(l => { const it = S.items.find(i => i.id === l.item_id) || { name: "—", unit: "piece" }, left = +l.qty - dq(l.id); return `<div class="card" style="padding:10px"><div class="row between"><b>${esc(it.name)}</b><span class="dim num">اتباع ${num(l.qty)} · رجع قبل كده ${num(dq(l.id))}</span></div>${l.serial ? `<div class="dim num" style="font-size:12px">SN ${esc(l.serial)}</div>` : ""}
+       ${left > 0 ? `<div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap"><label class="row" style="gap:6px">الكمية <input class="inp num" type="number" min="0" max="${left}" step="${it.unit === "meter" ? "0.1" : "1"}" data-rq="${l.id}" value="0" style="width:80px"></label><select class="inp" data-rc="${l.id}" style="flex:1"><option value="resell">سليم — يرجع للبيع</option><option value="damaged">تالف — ما يرجعش للمخزون</option></select></div>` : `<div class="dim">رجع بالكامل</div>`}</div>`; }).join("")}
+     <div class="grid g2"><div class="field"><label>طريقة رد الفلوس</label><select class="inp" id="rRef">${Object.entries(PAYN).map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}<option value="credit">من غير رد فلوس (استبدال)</option></select></div><div class="field"><label>السبب</label><input class="inp" id="rWhy"></div></div>
+     ${approve ? "" : `<div class="field"><label>رمز المدير للموافقة</label><input class="inp num" type="password" id="rPin"></div>`}<div id="rErr"></div>
+     <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">رجوع</button><button class="btn gold" data-act="retGo" data-id="${s.id}">تسجيل المرتجع</button></div></div>`); }
+  catch (e) { toast(errText(e), true); }
+}
+async function retGo(btn, saleId) {
+  const lines = [...document.querySelectorAll("[data-rq]")].map(x => ({ sale_line_id: +x.dataset.rq, qty: +x.value || 0, condition: document.querySelector(`[data-rc="${x.dataset.rq}"]`).value })).filter(l => l.qty > 0);
+  if (!lines.length) return ($("#rErr").innerHTML = `<div class="warnbox">اكتب كمية المرتجع.</div>`);
+  busy(btn, true);
+  try { const r = await rpc("return_post", { p_token: T(), p_sale: saleId, p_lines: lines, p_reason: $("#rWhy").value.trim(), p_refund: $("#rRef").value, p_approver_pin: ($("#rPin") || {}).value || null });
+    closeModal(); toast(`اتسجّل المرتجع ${r.no} بقيمة ${fmt(r.amount, 1)}.`); S.cash = null; await loadItems(); render(); }
+  catch (e) { $("#rErr").innerHTML = `<div class="warnbox">${esc(errText(e))}</div>`; busy(btn, false); }
+}
+
+/* ---------- instalment companies screen ---------- */
+V.inst = () => { let h = header(can("inst", "e") || ["owner", "gm"].includes(S.sess.role.id) ? `<button class="btn gold" data-act="finCoNew">${ico("plus")} شركة تقسيط</button>` : ""); const F = S.finView; if (!F) { setTimeout(loadFinView, 0); return h + `<div class="spin"></div>`; }
+  const open = F.rec.filter(r => r.status === "open"), late = open.filter(r => r.due_date < today()), canE = can("inst", "e") || ["owner", "gm"].includes(S.sess.role.id);
+  h += `<div class="grid g4">${[["مستحق عند الشركات", fmt(open.reduce((a, r) => a + +r.net, 0)), open.length + " فاتورة"], ["متأخر عن ميعاده", fmt(late.reduce((a, r) => a + +r.net, 0)), late.length + " فاتورة"], ["عمولات على المحل", fmt(F.rec.filter(r => r.status !== "cancelled").reduce((a, r) => a + +r.commission, 0))], ["اتحصّل", fmt(F.rec.filter(r => r.status === "settled").reduce((a, r) => a + +r.received, 0))]].map((k, i) => `<div class="card kpi rise ${i === 0 ? "lux" : ""}" style="--d:${i}"><div class="lbl">${k[0]}</div><div class="val">${k[1]}</div>${k[2] ? `<div class="dim" style="font-size:12px">${k[2]}</div>` : ""}</div>`).join("")}</div>`;
+  h += `<div class="grid g3">${S.finCo.map(c => `<div class="card rise"><h3>${esc(c.name)}${c.active ? "" : ` <span class="chip plain">موقوفة</span>`}${canE ? `<button class="btn sm ghost" data-act="finCoEdit" data-id="${c.id}">تعديل</button>` : ""}</h3><div class="stack" style="gap:5px;font-size:13px"><div class="row between"><span class="muted">بتحوّل بعد</span><b class="num">${c.transfer_days} يوم</b></div>${S.finPl.filter(p => p.company_id === c.id && p.active).map(p => `<div class="row between"><span>${esc(p.name)} <span class="dim">(${p.months} شهر)</span></span><span class="chip ${p.payer === "store" ? "warn" : "plain"}">${p.payer === "store" ? "على المحل " + (+p.rate) + "%" : "على العميل"}</span></div>`).join("")}</div></div>`).join("") || `<div class="card"><p class="muted">لسه مفيش شركات تقسيط. ضيف ValU أو أمان أو كونتكت وخططهم.</p></div>`}</div>`;
+  h += `<div class="tw rise"><table><thead><tr><th>الفاتورة</th><th>الشركة والخطة</th><th>المكان</th><th class="n">البيع</th><th class="n">عمولة على المحل</th><th class="n">صافي هيتحوّل</th><th>الميعاد</th><th>الحالة</th><th></th></tr></thead><tbody>${F.rec.map(r => { const st = r.status === "settled" ? ["اتحصّلت", "ok"] : r.status === "cancelled" ? ["ملغاة", "plain"] : r.due_date < today() ? ["متأخرة", "bad"] : ["مفتوحة", "info"];
+    return `<tr><td class="num">${esc(r.sale_no || "")}<br><span class="dim" style="font-size:12px">${new Date(r.created_at).toLocaleDateString("ar-EG")}</span></td><td>${esc(planName(r.plan_id))}</td><td>${esc(locName(r.location_id))}</td><td class="n">${fmt(r.amount, 1)}</td><td class="n">${+r.commission ? fmt(r.commission, 1) : "—"}</td><td class="n"><b>${fmt(r.net, 1)}</b></td><td class="num">${esc(r.due_date)}</td><td><span class="chip ${st[1]}">${st[0]}</span>${r.ref ? `<br><span class="dim" style="font-size:12px">${esc(r.ref)} · ${fmt(r.received, 1)}</span>` : ""}</td><td>${r.status === "open" && canE ? `<button class="btn sm gold" data-act="finSettle" data-id="${r.id}">تسجيل التحويل</button>` : ""}</td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">لسه مفيش بيع بالتقسيط.</td></tr>`}</tbody></table></div>`;
+  return h; };
+async function loadFinView() { try { await loadFin(); const [rec, sales, accts] = await Promise.all([q("finance_receivables", "*", x => x.order("due_date").limit(1000)), q("sales", "id,no", x => x.limit(5000)), q("cash_accounts", "*", x => x.order("id"))]); rec.forEach(r => { r.sale_no = (sales.find(s => s.id === r.sale_id) || {}).no; }); S.finView = { rec }; S.bankAccts = accts.filter(a => a.kind === "bank"); if (S.route === "inst") render(); } catch (e) { toast(errText(e), true); } }
+function finCoModal(c) {
+  const x = c ? Object.assign({}, c, { plans: S.finPl.filter(p => p.company_id === c.id && p.active).map(p => Object.assign({}, p)) }) : { name: "", transfer_days: 7, phone: "", account_id: (S.bankAccts[0] || {}).id, active: true, plans: [{ name: "٦ شهور بدون فوائد", months: 6, rate: 0, payer: "store" }] };
+  S._fc = x; const draw = () => modal(`<h2>${c ? "تعديل شركة تقسيط" : "شركة تقسيط جديدة"}</h2><div class="stack" style="margin-top:10px"><div class="grid g2"><div class="field"><label>اسم الشركة</label><input class="inp" id="fcN" value="${esc(x.name)}"></div><div class="field"><label>بتحوّل الفلوس بعد (يوم)</label><input class="inp num" id="fcD" type="number" min="0" value="${x.transfer_days}"></div><div class="field"><label>التليفون</label><input class="inp num" id="fcP" value="${esc(x.phone || "")}"></div><div class="field"><label>بتحوّل على حساب</label><select class="inp" id="fcA">${S.bankAccts.map(a => `<option value="${a.id}" ${x.account_id === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></div></div>
+   <b>الخطط</b>${x.plans.map((p, i) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="inp" data-fp="${i}" data-f="name" placeholder="اسم الخطة" value="${esc(p.name)}" style="flex:2"><input class="inp num" data-fp="${i}" data-f="months" type="number" min="1" value="${p.months}" title="شهور" style="width:64px"><input class="inp num" data-fp="${i}" data-f="rate" type="number" min="0" step="0.1" value="${p.rate}" title="%" style="width:64px"><select class="inp" data-fp="${i}" data-f="payer" style="flex:1.4"><option value="store" ${p.payer === "store" ? "selected" : ""}>العمولة على المحل</option><option value="customer" ${p.payer === "customer" ? "selected" : ""}>على العميل</option></select><button class="btn sm ghost" data-act="fpDel" data-i="${i}">✕</button></div>`).join("")}
+   <button class="btn sm ghost" data-act="fpAdd">${ico("plus")} خطة</button>${c ? `<label class="row" style="gap:8px"><input type="checkbox" class="ck" id="fcAct" ${x.active ? "checked" : ""}> الشركة شغالة</label>` : ""}<div id="fcErr"></div>
+   <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" data-act="finCoSave">حفظ</button></div></div>`);
+  S._fcDraw = () => { fcRead(); draw(); }; draw();
+}
+function fcRead() { const x = S._fc; if (!$("#fcN")) return; x.name = $("#fcN").value; x.transfer_days = +$("#fcD").value || 0; x.phone = $("#fcP").value; x.account_id = +$("#fcA").value || null; if ($("#fcAct")) x.active = $("#fcAct").checked; document.querySelectorAll("[data-fp]").forEach(e => { const p = x.plans[+e.dataset.fp]; p[e.dataset.f] = e.dataset.f === "months" || e.dataset.f === "rate" ? +e.value : e.value; }); }
+function settleModal(r) {
+  modal(`<h2>تسجيل تحويل من ${esc(planName(r.plan_id).split(" · ")[0])}</h2><p class="muted" style="margin:0 0 10px">${esc(r.sale_no || "")} · المفروض يتحوّل <b class="num">${fmt(r.net, 1)}</b></p><div class="stack">
+   <div class="grid g2"><div class="field"><label>المبلغ اللي وصل</label><input class="inp num" id="sAmt" type="number" min="0" value="${r.net}"></div><div class="field"><label>التاريخ</label><input class="inp" id="sDate" type="date" value="${today()}" max="${today()}"></div></div>
+   <div class="field"><label>رقم التحويل</label><input class="inp" id="sRef"></div><div class="field"><label>سبب الفرق (لو المبلغ مختلف)</label><input class="inp" id="sWhy"></div><div id="sErr"></div>
+   <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" data-act="finSettleGo" data-id="${r.id}">حفظ</button></div></div>`);
+}
+async function ops2Click(k, a) {
+  const wrap = async (fn, after, errBox) => { busy(a, true); try { await fn(); if (after) await after(); } catch (e) { if (errBox && $(errBox)) $(errBox).innerHTML = `<div class="warnbox">${esc(errText(e))}</div>`; else toast(errText(e), true); busy(a, false); } };
+  if (k === "heldSend") heldSend(a);
+  else if (k === "heldList") heldList();
+  else if (k === "heldTake") heldTake(a.dataset.id);
+  else if (k === "heldCancel") wrap(() => rpc("held_cancel", { p_token: T(), p_id: a.dataset.id }), async () => { toast("اتلغت."); heldList(); });
+  else if (k === "saleRet") returnModal(a.dataset.id);
+  else if (k === "retGo") retGo(a, a.dataset.id);
+  else if (k === "finCoNew") finCoModal(null);
+  else if (k === "finCoEdit") finCoModal(S.finCo.find(c => c.id === +a.dataset.id));
+  else if (k === "fpAdd") { fcRead(); S._fc.plans.push({ name: "", months: 12, rate: 0, payer: "customer" }); S._fcDraw(); }
+  else if (k === "fpDel") { fcRead(); S._fc.plans.splice(+a.dataset.i, 1); S._fcDraw(); }
+  else if (k === "finCoSave") { fcRead(); const x = S._fc; if (!x.name.trim()) return ($("#fcErr").innerHTML = `<div class="warnbox">اكتب اسم الشركة.</div>`); if (x.plans.some(p => !p.name.trim() || !(p.months > 0) || p.rate < 0)) return ($("#fcErr").innerHTML = `<div class="warnbox">كل خطة محتاجة اسم وعدد شهور ونسبة.</div>`);
+    wrap(() => rpc("fin_company_save", { p_token: T(), p: { id: x.id || null, name: x.name.trim(), transfer_days: x.transfer_days, phone: x.phone, account_id: x.account_id, active: x.active !== false, plans: x.plans.map(p => ({ id: p.id || null, name: p.name, months: p.months, rate: p.rate, payer: p.payer, active: true })) } }), async () => { closeModal(); toast("اتحفظ."); S.finView = null; render(); }, "#fcErr"); }
+  else if (k === "finSettle") settleModal(S.finView.rec.find(r => r.id === a.dataset.id));
+  else if (k === "finSettleGo") wrap(() => rpc("fin_settle", { p_token: T(), p_id: a.dataset.id, p_amount: +$("#sAmt").value, p_date: $("#sDate").value, p_ref: $("#sRef").value.trim(), p_reason: $("#sWhy").value.trim() || null }), async () => { closeModal(); toast("اتسجّل التحويل."); S.finView = null; render(); }, "#sErr");
   else return false;
   return true;
 }

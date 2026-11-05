@@ -1,0 +1,6 @@
+{
+  "port": 17777,
+  "origins": ["https://mokhtar-elmankabadi.github.io"],
+  "retries": 3,
+  "retryDelaySec": 8
+}

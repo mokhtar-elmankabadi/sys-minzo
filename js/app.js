@@ -341,7 +341,7 @@ H.io = () => {
   $("#impFile").onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try {
-      const wb = XLSX.read(await f.arrayBuffer(), { type: "array" }), ws = wb.Sheets[wb.SheetNames[0]], aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }).filter(r => r.some(c => String(c).trim() !== ""));
+      const wb = XLSX.read(await f.arrayBuffer(), { type: "array" }), sn = wb.SheetNames.find(n => (XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: "" })[0] || []).some(h => norm(String(h)) === norm("اسم الصنف"))) || wb.SheetNames[0], ws = wb.Sheets[sn], aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }).filter(r => r.some(c => String(c).trim() !== ""));
       if (aoa.length < 2) return toast("الملف فاضي أو مفيهوش غير العناوين.", true);
       const heads = aoa[0].map(x => String(x).trim()), map = {};
       const used = new Set();   /* exact header match first, then "contains"; each column is used once */

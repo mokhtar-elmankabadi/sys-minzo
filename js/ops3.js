@@ -115,7 +115,8 @@ H.flow = perHook;
    ===================================================================== */
 async function loadCap() { await loadGLAll(); const F = S.fin; const [partners, moves, assets, acc] = await Promise.all([q("partners", "*", x => x.order("id")), q("capital_moves", "*", x => x.order("move_date", { ascending: false })), q("fixed_assets", "*", x => x.order("start_date")), q("cash_accounts", "*", x => x.eq("active", true).order("id"))]);
   Object.assign(F, { partners, cmoves: moves, assets, cashAcc: acc, capKey: perKey() }); }
-function assetBook(a, upto) { const m = Math.max(0, Math.min(a.life_months, (new Date(upto).getUTCFullYear() - new Date(a.start_date).getUTCFullYear()) * 12 + new Date(upto).getUTCMonth() - new Date(a.start_date).getUTCMonth() - (new Date(addD(upto, 1)).getUTCDate() === 1 ? 0 : 1)));
+function assetBook(a, upto) { const sd = a.opening ? addD(String(a.start_date).slice(0, 10), 1) : a.start_date; /* opening-sheet assets are already net on the opening day */
+  const m = Math.max(0, Math.min(a.life_months, (new Date(upto).getUTCFullYear() - new Date(sd).getUTCFullYear()) * 12 + new Date(upto).getUTCMonth() - new Date(sd).getUTCMonth() + (new Date(addD(upto, 1)).getUTCDate() === 1 ? 1 : 0)));  /* from the purchase month: each month counts once its last day has passed */
   const dep = r2((+a.start_value - +a.salvage) / a.life_months * Math.max(0, m)); return { dep, net: r2(+a.start_value - dep) }; }
 V.capital = () => {
   let h = header(`<span class="dim num">حتى ${today()}</span>${isTop() ? `<button class="btn" data-act="cpPartner">${ico("plus")} شريك</button><button class="btn" data-act="cpAsset">${ico("plus")} أصل ثابت</button><button class="btn gold" data-act="cpMove">حركة رأس مال</button>` : ""}`);

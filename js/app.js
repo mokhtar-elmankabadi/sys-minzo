@@ -32,7 +32,7 @@ const ERR = {
   MORE_THAN_BALANCE: "المبلغ أكتر من رصيد المورد", NEEDS_OWNER: "المبلغ فوق حدّك — محتاج رمز المالك", CHEQUE_DETAILS: "الشيك محتاج رقم وتاريخ.", NO_REPLACEMENT_IN_STOCK: "مفيش جهاز بديل في المخزون — اختار «نستلم ونبعته».",
   SOLD_DATE_REQUIRED: "اكتب تاريخ البيع.", PROBLEM_REQUIRED: "اكتب العطل.", BAD_STATUS: "الحالة مش مسموح تتغيّر كده.", EMPTY_INVOICE: "ضيف صنف.", BAD_AMOUNT: "المبلغ غلط.",
   OFFER_OVERLAP: "فيه عرض تاني شغّال بنفس الأولوية على نفس الأصناف في نفس الوقت", BELOW_COST_NEEDS_OWNER: "العرض بيبيع تحت التكلفة — محتاج المالك أو المدير العام.", OFFER_TARGET_REQUIRED: "اختار الأصناف أو المجموعات أو الأقسام اللي عليها العرض.", BUNDLE_NEEDS_ITEMS: "الطقم محتاج صنفين على الأقل وسعر.", GIFT_REQUIRED: "اختار الهدية.", BAD_DATES: "المواعيد غلط — النهاية لازم بعد البداية.", BAD_OFFER: "نوع العرض مش مناسب للاختيار ده.",
-  NOT_BALANCED: "القيد مش متوازن — المدين لازم يساوي الدائن.", LINE_BOTH_SIDES: "السطر الواحد يا مدين يا دائن.", NOT_LEAF_ACCOUNT: "اختار حساب فرعي مش مجموعة.", PERIOD_CLOSED: "الشهر ده مقفول.", MEMO_REQUIRED: "اكتب البيان.", CANNOT_APPROVE_OWN: "مينفعش تعتمد قيد إنت اللي كتبته.", ONLY_OWNER: "المالك بس اللي يعمل ده.", YEAR_CLOSED: "السنة دي مقفولة.", BAD_RIN: "رقم التسجيل الضريبي ٩ أرقام.", VAT_FROM_REQUIRED: "حدد تاريخ بداية الضريبة.",
+  NOT_BALANCED: "القيد مش متوازن — المدين لازم يساوي الدائن.", BAD_IMAGE: "الملف لازم يكون صورة PNG أو JPG أو WebP.", IMAGE_TOO_BIG: "الصورة كبيرة — جرّب صورة أصغر.", LINE_BOTH_SIDES: "السطر الواحد يا مدين يا دائن.", NOT_LEAF_ACCOUNT: "اختار حساب فرعي مش مجموعة.", PERIOD_CLOSED: "الشهر ده مقفول.", MEMO_REQUIRED: "اكتب البيان.", CANNOT_APPROVE_OWN: "مينفعش تعتمد قيد إنت اللي كتبته.", ONLY_OWNER: "المالك بس اللي يعمل ده.", YEAR_CLOSED: "السنة دي مقفولة.", BAD_RIN: "رقم التسجيل الضريبي ٩ أرقام.", VAT_FROM_REQUIRED: "حدد تاريخ بداية الضريبة.",
   BAD_QTY: "الكمية غلط.", DISCOUNT_NEEDS_APPROVAL: "الخصم فوق حدّك — محتاج رمز مدير.", OVERPAID_NON_CASH: "الفيزا والمحافظ أكتر من المطلوب.", BAD_DISCOUNT: "الخصم غلط.", NOT_FOUND: "مش موجود.",
   CANNOT_DISABLE_OWN_DEVICE: "مينفعش توقف الجهاز اللي شغال عليه.", NOT_SET_UP: "النظام لسه ما اتهيّأش.",
   ITEM_LOCKED: "الصنف مقفول للبيع دلوقتي", PAYROLL_CLOSED: "مرتبات الشهر ده اتعتمدت — الحضور والمرتبات اتقفلوا.", ALREADY_OUT: "إنت سجّلت انصرافك النهارده.", EMPTY_PAYROLL: "مفيش مرتبات تتعتمد — احسبها الأول.", NEGATIVE_NET: "فيه موظف صافي مرتبه بالسالب — راجع الخصومات والسلف.",
@@ -101,7 +101,10 @@ const busy = (el, on) => { if (!el) return; el.disabled = on; el.dataset.t = el.
 /* =====================================================================
    GATE: device account → first run / registration / approval → PIN
    ===================================================================== */
-function gate(html) { $("#app").hidden = true; const g = $("#gate"); g.hidden = false; g.innerHTML = `<div class="gbox"><div class="mark">${MARK}</div>${html}</div>`; const f = g.querySelector("input"); if (f) f.focus(); }
+const LOGO = () => (S.store && S.store.logo_url) || "";
+const logoImg = (h, extra) => LOGO() ? `<img src="${LOGO()}" alt="" style="height:${h};max-width:100%;object-fit:contain;${extra || ""}">` : "";
+let gateLogo = ""; try { gateLogo = localStorage.getItem("mz.logo") || ""; } catch (e) {}
+function gate(html) { $("#app").hidden = true; const g = $("#gate"); g.hidden = false; g.innerHTML = `<div class="gbox"><div class="mark">${gateLogo ? `<img src="${gateLogo}" alt="" style="width:100%;height:100%;object-fit:contain">` : MARK}</div>${html}</div>`; const f = g.querySelector("input"); if (f) f.focus(); }
 
 async function boot() {
   gate(`<h1>SYS Minzo</h1><p class="sub">جاري التحميل…</p><div class="spin"></div>`);
@@ -214,6 +217,7 @@ async function q(table, sel, mod) { let x = sb.from(table).select(sel || "*"); i
 async function loadCore() {
   const [locs, depts, groups, store] = await Promise.all([q("locations", "*", x => x.order("id")), q("departments", "*", x => x.order("sort")), q("item_groups", "*", x => x.order("name")), q("store")]);
   S.locs = locs; S.depts = depts; S.groups = groups; S.store = store[0];
+  gateLogo = (S.store && S.store.logo_url) || ""; try { if (gateLogo) localStorage.setItem("mz.logo", gateLogo); else localStorage.removeItem("mz.logo"); } catch (e) {}
 }
 async function loadItems() {
   const [items, stock] = await Promise.all([q("items", "*", x => x.eq("hidden", false).order("name").limit(5000)), q("stock", "*", x => x.limit(20000))]);
@@ -237,7 +241,7 @@ async function enterApp() {
   render();
 }
 function renderSide() {
-  let h = `<div class="brand"><div class="mono">${MARK.replace("<svg", '<svg width="30" height="30" fill="none" style="stroke:var(--gold)" stroke-width="5" stroke-linecap="round"')}</div><div><b>${esc((S.store && S.store.name) || S.storeName || "")}</b><small>أدوات منزلية · أجهزة · مفروشات</small></div></div>`;
+  let h = `<div class="brand"><div class="mono">${LOGO() ? logoImg("30px", "width:30px") : MARK.replace("<svg", '<svg width="30" height="30" fill="none" style="stroke:var(--gold)" stroke-width="5" stroke-linecap="round"')}</div><div><b>${esc((S.store && S.store.name) || S.storeName || "")}</b><small>أدوات منزلية · أجهزة · مفروشات</small></div></div>`;
   NAV.forEach(([g, ids]) => { const v = ids.filter(allowed); if (!v.length) return; h += `<div class="navlbl">${g}</div><nav class="nav">${v.map(id => `<button data-go="${id}" class="${S.route === id ? "on" : ""}">${ico(id)}<span>${NAME[id]}</span></button>`).join("")}</nav>`; });
   h += `<div class="foot">SYS Minzo<br><span class="num">${esc(CFG.version)}</span></div>`;
   $("#side").innerHTML = h;
@@ -563,7 +567,7 @@ function posDone(r, c) {
   const pays = Object.entries(P.pay).filter(([, v]) => +v > 0); P.planDone = P.plan;
   P.cart = []; P.disc = 0; P.pin = ""; P.cust = { name: "", phone: "" }; P.seller = ""; P.plan = ""; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" };
   modal(`<h2>${r.offline ? "اتحفظت على الجهاز" : "تم البيع"}</h2>${r.offline ? `<div class="warnbox">مفيش نت — الفاتورة اتحفظت على الجهاز وهتتبعت لوحدها أول ما النت يرجع.</div>` : ""}
-   <div class="receipt" id="rcpt">${RC().name !== false ? `<div style="text-align:center;font-family:var(--f-display);font-size:16px">${esc(S.store.name)}</div>` : ""}${RC().addr || RC().phone ? `<div style="text-align:center" class="dim">${esc([RC().addr, RC().phone].filter(Boolean).join(" · "))}</div>` : ""}<div style="text-align:center" class="dim">${esc(locName(S.sess.device.location_id))} · ${new Date().toLocaleString("ar-EG")}</div><div style="text-align:center" class="num">${esc(r.no)}</div><div class="hr" style="margin:8px 0"></div>
+   <div class="receipt" id="rcpt">${RC().logo !== false && LOGO() ? `<div style="text-align:center;margin-bottom:4px">${logoImg("16mm", "max-width:44mm")}</div>` : ""}${RC().name !== false ? `<div style="text-align:center;font-family:var(--f-display);font-size:16px">${esc(S.store.name)}</div>` : ""}${RC().addr || RC().phone ? `<div style="text-align:center" class="dim">${esc([RC().addr, RC().phone].filter(Boolean).join(" · "))}</div>` : ""}<div style="text-align:center" class="dim">${esc(locName(S.sess.device.location_id))} · ${new Date().toLocaleString("ar-EG")}</div><div style="text-align:center" class="num">${esc(r.no)}</div><div class="hr" style="margin:8px 0"></div>
    ${lines.map(x => `<div class="r"><span>${esc(x.n)} × ${num(x.q)}${x.sn ? `<br><span class="dim">SN ${esc(x.sn)}</span>` : ""}${x.od > 0 ? `<br><span class="dim">${esc(x.on)} −${fmt(x.od, 1)}</span>` : ""}</span><span>${fmt(x.p * x.q, 1)}</span></div>`).join("")}
    ${c.odisc && !r.offline ? `<div class="r"><span>خصم العروض</span><span>−${fmt(c.odisc, 1)}</span></div>` : ""}${c.mdisc ? `<div class="r"><span>خصم</span><span>−${fmt(c.mdisc, 1)}</span></div>` : ""}${c.vatOn ? `<div class="r"><span>ض.ق.م</span><span>${fmt(r.vat != null ? r.vat : c.vat, 1)}</span></div>` : ""}
    <div class="hr" style="margin:8px 0"></div><div class="r"><b>الإجمالي</b><b>${fmt(r.total, 1)}</b></div>${pays.map(([k, v]) => `<div class="r"><span>${k === "inst" ? "تقسيط · " + esc(planName(P.planDone)) : k === "points" ? "نقاط ولاء" : PAYN[k]}</span><span>${fmt(v, 1)}</span></div>`).join("")}${(r.change || 0) > 0 ? `<div class="r"><span>الباقي</span><span>${fmt(r.change, 1)}</span></div>` : ""}${RC().savings !== false && (c.odisc + c.mdisc) > 0 && !r.offline ? `<div style="text-align:center;margin-top:6px">وفّرت ${fmt(c.odisc + c.mdisc, 1)}</div>` : ""}${RC().qr !== false && window.MZQR && !r.offline ? `<div style="width:26mm;height:26mm;margin:8px auto 0">${window.MZQR(r.no + "|" + today() + "|" + r.total)}</div>` : ""}${RC().footer ? `<div style="text-align:center;margin-top:6px" class="dim">${esc(RC().footer)}</div>` : ""}</div>
@@ -1023,6 +1027,9 @@ function glExport() { const G = S.gl, nm = (GTABS.find(t => t[0] === G.tab) || [
 
 /* ---------- settings & VAT ---------- */
 V.settings = () => { let h = header(); const st = S.store || {}, own = S.sess.role.id === "owner", vx = S.items.filter(i => i.vat_rate != null);
+  h += `<div class="card rise"><h3>شعار المحل</h3><div class="row" style="gap:16px;flex-wrap:wrap;align-items:center"><div style="width:140px;height:90px;border:1px dashed var(--line2);border-radius:10px;display:grid;place-items:center;background:#fff;padding:6px">${LOGO() ? logoImg("78px") : `<span class="dim" style="font-size:12px">مفيش شعار</span>`}</div>
+    <div class="stack" style="gap:8px"><div class="row" style="gap:8px"><label class="btn gold" for="stLogo" style="cursor:pointer">${LOGO() ? "تغيير الشعار" : "رفع الشعار"}</label><input type="file" id="stLogo" accept="image/png,image/jpeg,image/webp" hidden>${LOGO() ? `<button class="btn ghost" data-act="stLogoDel">إزالة</button>` : ""}</div>
+    <span class="dim" style="font-size:12.5px">PNG بخلفية شفافة أحسن حاجة. الشعار بيظهر في القائمة، وشاشة الدخول، والإيصال، والفاتورة الضريبية، والتقرير النهائي.</span><div id="stLogoErr"></div></div></div></div>`;
   h += `<div class="grid g2"><div class="card rise"><h3>بيانات المحل</h3><div class="stack"><div class="field"><label>اسم المحل</label><input class="inp" id="stN" value="${esc(st.name || "")}"></div>
     <div class="grid g2"><div class="field"><label>ميعاد تقفيل اليوم</label><input class="inp" type="time" id="stC" value="${esc(String(st.day_close_time || "06:00").slice(0, 5))}"></div><div class="field"><label>ميعاد فتح اليوم الجديد</label><input class="inp" type="time" id="stO" value="${esc(String(st.day_open_time || "07:00").slice(0, 5))}"></div></div>
     <p class="dim" style="margin:0;font-size:12.5px">البيع بيتقفل بين ميعاد التقفيل وميعاد الفتح، وأي بيع بعد نص الليل وقبل التقفيل بيتحسب على اليوم اللي فات.</p>
@@ -1037,7 +1044,21 @@ V.settings = () => { let h = header(); const st = S.store || {}, own = S.sess.ro
    <div class="row" style="gap:6px;flex-wrap:nowrap;max-width:640px"><select class="inp" id="vxI" style="flex:2">${S.items.filter(i => i.vat_rate == null).map(i => `<option value="${i.id}">${esc(i.name)}</option>`).join("")}</select><input class="inp num" id="vxR" type="number" min="0" max="100" step="0.5" value="0" style="width:90px" title="النسبة %"><button class="btn sm" data-act="vxAdd">${ico("plus")} إضافة</button></div>
    <div class="tw" style="margin-top:10px"><table><thead><tr><th>الصنف</th><th class="n">النسبة</th><th></th></tr></thead><tbody>${vx.map(i => `<tr><td>${esc(i.name)}</td><td class="n">${+i.vat_rate}%${+i.vat_rate === 0 ? ` <span class="chip plain">معفي</span>` : ""}</td><td><button class="btn sm ghost" data-act="vxDel" data-id="${i.id}">رجّعه للنسبة العامة</button></td></tr>`).join("") || `<tr><td colspan="3" class="muted">كل الأصناف على النسبة العامة.</td></tr>`}</tbody></table></div></div>`;
   return h; };
-H.settings = () => { const v = $("#stV"); if (v) v.onchange = () => { $("#stVbox").style.display = v.checked ? "" : "none"; if (v.checked && !$("#stF").value) $("#stF").value = today(); }; };
+H.settings = () => { const lf = $("#stLogo"); if (lf) lf.onchange = async e => { const f = e.target.files[0]; if (!f) return; const box = $("#stLogoErr");
+    try { box.innerHTML = `<span class="dim">بيترفع…</span>`; const url = await shrinkLogo(f); await rpc("store_logo_save", { p_token: T(), p_logo: url }); await loadCore(); toast("اتحفظ الشعار."); render(); }
+    catch (er) { box.innerHTML = `<div class="warnbox">${esc(errText(er))}</div>`; } };
+  const v = $("#stV"); if (v) v.onchange = () => { $("#stVbox").style.display = v.checked ? "" : "none"; if (v.checked && !$("#stF").value) $("#stF").value = today(); }; };
+
+/* logo: shrink in the browser so the store row stays small (≤ 512 px on the long side) */
+async function shrinkLogo(file) {
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error("BAD_IMAGE");
+  const src = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(file); });
+  const img = new Image(); await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error("BAD_IMAGE")); img.src = src; });
+  const k = Math.min(1, 512 / Math.max(img.width, img.height)), cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(img.width * k)); cv.height = Math.max(1, Math.round(img.height * k));
+  cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+  let out = cv.toDataURL("image/png"); if (out.length > 280000) out = cv.toDataURL("image/webp", 0.88);
+  if (out.length > 280000 || !out.startsWith("data:image/webp")) { if (out.length > 280000) { const g = cv.getContext("2d"); g.globalCompositeOperation = "destination-over"; g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); out = cv.toDataURL("image/jpeg", 0.85); } }
+  if (out.length > 400000) throw new Error("IMAGE_TOO_BIG"); return out; }
 
 /* ---------- salesperson commission ---------- */
 const CSC = { dept: "قسم", group: "مجموعة", item: "صنف (تصفية)" };
@@ -1141,6 +1162,7 @@ async function ops4Click(k, a) {
   else if (k === "coaSave") wrap(() => rpc("gl_account_save", { p_token: T(), p_parent: a.dataset.c, p_name: $("#coN").value.trim(), p_name_en: $("#coE").value.trim() }).then(c => toast("اتضاف الحساب " + c)), async () => { closeModal(); S.gl.loaded = null; render(); }, "#coErr");
   else if (k === "perSet") { const c = a.dataset.c === "1"; if (!confirm(c ? `إقفال شهر ${a.dataset.m}؟ مش هينفع يتسجّل عليه قيد يدوي بعد كده.` : `إعادة فتح شهر ${a.dataset.m}؟`)) return; wrap(() => rpc("gl_period_set", { p_token: T(), p_month: a.dataset.m, p_close: c }), async () => { S.gl.loaded = null; render(); }); }
   else if (k === "yearClose") { const y = +a.dataset.y; if (!confirm(`إقفال سنة ${y}؟\nصافي الربح هيترحّل للأرباح المحتجزة والـ ١٢ شهر هيتقفلوا. الخطوة دي مش بترجع.`)) return; wrap(() => rpc("gl_year_close", { p_token: T(), p_year: y }).then(r => toast(`اتقفلت السنة · صافي الربح ${fmt(r.net_profit, 1)}`)), async () => { S.gl.loaded = null; render(); }); }
+  else if (k === "stLogoDel") { if (!confirm("تشيل الشعار؟")) return; busy(a, true); rpc("store_logo_save", { p_token: T(), p_logo: null }).then(async () => { await loadCore(); toast("اتشال الشعار."); render(); }).catch(e => { busy(a, false); toast(errText(e), true); }); }
   else if (k === "stSave") { const p = { name: $("#stN").value.trim(), day_close_time: $("#stC").value, day_open_time: $("#stO").value, price_alert_pct: +$("#stP").value || 10, min_margin_pct: +$("#stM").value || 0, vat_registered: $("#stV").checked };
     if (p.vat_registered) Object.assign(p, { vat_rin: $("#stR").value.trim(), vat_from: $("#stF").value, vat_rate: +$("#stRt").value, prices_include_vat: $("#stI").value === "1" });
     if (p.vat_registered && !S.store.vat_registered && !confirm("تشغيل ضريبة القيمة المضافة من " + p.vat_from + "؟\nكل الفواتير من التاريخ ده هتتحسب عليها الضريبة.")) return;
@@ -1191,7 +1213,7 @@ document.addEventListener("click", e => {
   else if (k === "devEdit") devModal(S.devList.find(d => d.id === a.dataset.id));
   else opsClick(k, a);
 });
-window.MZ = { S, V, H, P, NAME, SUB, NAV, allowed, sb, $, esc, fmt, num, norm, ls, rpc, q, T, can, has, role, seeCost, locName, ico, toast, modal, closeModal, busy, header, render, go, loadItems, loadCore, loadDir, who, today, xlsOut, errText, myLoc, r2, UNITS, PAYN, returnModal };
+window.MZ = { LOGO, logoImg, S, V, H, P, NAME, SUB, NAV, allowed, sb, $, esc, fmt, num, norm, ls, rpc, q, T, can, has, role, seeCost, locName, ico, toast, modal, closeModal, busy, header, render, go, loadItems, loadCore, loadDir, who, today, xlsOut, errText, myLoc, r2, UNITS, PAYN, returnModal };
 { const t = ls("minzo-theme"); if (t) document.documentElement.dataset.theme = t; }
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();

@@ -4,7 +4,15 @@
 (function () {
 "use strict";
 const CFG = window.MINZO_CONFIG;
-const sb = window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true, storageKey: "minzo-device" } });
+/* the staff session rides on every table read, so the database can apply the role's read rules */
+const withTok = (u, o) => { o = o || {}; const t = window.__mzTok; if (t && String(u).includes("/rest/v1/")) { const h = new Headers(o.headers || {}); h.set("x-mz-token", t); o = Object.assign({}, o, { headers: h }); } return fetch(u, o); };
+/* devC: this browser as a showroom device (anonymous account kept on the device).
+   mailC: a person signed in by email; kept apart so a showroom PC never loses its device identity. */
+const devC = window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true, storageKey: "minzo-device" }, global: { fetch: withTok } });
+const mailC = window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: true, autoRefreshToken: true, storageKey: "minzo-email" }, global: { fetch: withTok } });
+let MODE = "device";
+const cur = () => MODE === "email" ? mailC : devC;
+const sb = { rpc: (f, a, o) => cur().rpc(f, a, o), from: t => cur().from(t), get auth() { return cur().auth; }, functions: { invoke: (n, o) => cur().functions.invoke(n, o) } };
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (n, d) => (Math.round((+n || 0) * (d ? 100 : 1)) / (d ? 100 : 1)).toLocaleString("en-US", { maximumFractionDigits: d ? 2 : 0 }) + " ج.م";
@@ -16,7 +24,10 @@ const KINDS = { admin: "إدارة", cashier: "كاشير", warehouse: "جهاز
 
 /* ---------- server error codes → Arabic ---------- */
 const ERR = {
-  WRONG_PIN: "الرمز غلط.", LOCKED: "الجهاز اتقفل بعد 5 محاولات غلط. جرّب بعد 5 دقايق.", WRONG_LOCATION: "الرمز ده لموظف في فرع تاني.",
+  WRONG_PIN: "الرمز غلط.", USE_EMAIL: "الجهاز ده جهاز شخصي — ادخل برمزك بعد الإيميل.", NEED_PASSWORD: "ادخل بالإيميل والباسورد تاني.", EMAIL_DISABLED: "الدخول بالإيميل مقفول لحسابك — كلّم المالك.", PENDING: "حسابك لسه مستني المالك يفعّله.",
+  BAD_EMAIL: "الإيميل مش مظبوط.", WEAK_PASSWORD: "الباسورد لازم يكون 8 حروف أو أكتر.", EMAIL_TAKEN: "الإيميل ده عليه حساب قبل كده.", ALREADY_LINKED: "الموظف ده مربوط بإيميل خلاص.", NOT_LINKED: "الموظف ده مش مربوط بإيميل.",
+  STAFF_INACTIVE: "الموظف موقوف.", TOO_MANY: "طلبات كتير — جرّب بعد ساعة.", AUTH_ERROR: "حصلت مشكلة في عمل الحساب — جرّب تاني.", NAME_REQUIRED: "اكتب الاسم.", BAD_VALUE: "القيمة مش مظبوطة.",
+  "Invalid login credentials": "الإيميل أو الباسورد غلط.", LOCKED: "الجهاز اتقفل بعد 5 محاولات غلط. جرّب بعد 5 دقايق.", WRONG_LOCATION: "الرمز ده لموظف في فرع تاني.",
   SESSION_EXPIRED: "انتهت الجلسة — ادخل برمزك تاني.", DEVICE_NOT_APPROVED: "الجهاز لسه مستني الاعتماد.", DEVICE_NOT_REGISTERED: "الجهاز مش متسجّل.",
   PIN_LENGTH: "الرمز الرقمي من ٤ لـ ٨ أرقام.", PIN_REPEATED: "مينفعش كل الأرقام تبقى زي بعض.", PIN_SEQUENCE: "مينفعش أرقام متسلسلة زي ١٢٣٤.",
   PASSWORD_WEAK: "كلمة السر ٦ حروف على الأقل وفيها حروف وأرقام.", PIN_TAKEN: "الرمز ده مستخدم عند موظف تاني — اختار غيره.",
@@ -109,6 +120,9 @@ function gate(html) { $("#app").hidden = true; const g = $("#gate"); g.hidden = 
 async function boot() {
   gate(`<h1>SYS Minzo</h1><p class="sub">جاري التحميل…</p><div class="spin"></div>`);
   try {
+    const { data: { session: ms } } = await mailC.auth.getSession();
+    if (ms && ms.user && !ms.user.is_anonymous) { MODE = "email"; return emailFlow(); }
+    MODE = "device";
     let { data: { session } } = await sb.auth.getSession();
     if (!session) { const r = await sb.auth.signInAnonymously(); if (r.error) throw r.error; }
     const st = await rpc("setup_status");
@@ -146,7 +160,8 @@ function firstRun() {
 function registerDevice() {
   gate(`<h1>تسجيل جهاز جديد</h1><p class="sub">اكتب اسم الجهاز، وبعدها المالك أو المدير العام يعتمده من شاشة «الأجهزة».</p>
   <div class="stack"><div class="field"><label>اسم الجهاز</label><input class="inp" id="dName" placeholder="مثال: كاشير المعرض الأول"></div>
-  <button class="btn gold" id="dGo">إرسال طلب التسجيل</button><div class="gerr" id="dErr"></div></div>`);
+  <button class="btn gold" id="dGo">إرسال طلب التسجيل</button><div class="gerr" id="dErr"></div></div><button class="btn ghost" style="width:100%;margin-top:10px" id="toMail">دخول الإدارة بالإيميل</button>`);
+  $("#toMail").onclick = () => emailForm();
   $("#dGo").onclick = async e => {
     const n = $("#dName").value.trim(); if (!n) return ($("#dErr").textContent = "اكتب اسم الجهاز.");
     busy(e.target, true);
@@ -157,17 +172,19 @@ function registerDevice() {
 function pendingDevice(d) {
   gate(`<h1>في انتظار الاعتماد</h1><p class="sub">الجهاز «${esc(d.name)}» اتسجّل. اطلب من المالك أو المدير العام يعتمده من شاشة «الأجهزة» ويحدد مكانه.</p>
   <div class="okbox" style="text-align:center">رقم الجهاز: <b class="num">${esc(String(d.id || "").slice(0, 8))}</b></div>
-  <button class="btn gold" style="width:100%;margin-top:14px" id="pChk">اتعتمد؟ تحقق تاني</button>`);
-  $("#pChk").onclick = boot;
+  <button class="btn gold" style="width:100%;margin-top:14px" id="pChk">اتعتمد؟ تحقق تاني</button><button class="btn ghost" style="width:100%;margin-top:10px" id="toMail">دخول الإدارة بالإيميل</button>`);
+  $("#pChk").onclick = boot; $("#toMail").onclick = () => emailForm();
 }
 
 let pinBuf = "";
 function lockScreen(msg) {
-  S.sess = null; pinBuf = "";
-  gate(`<h1>${esc(S.storeName || "SYS Minzo")}</h1><p class="sub">اكتب رمزك عشان تدخل</p>
+  S.sess = null; window.__mzTok = null; pinBuf = "";
+  const em = MODE === "email", sub = em ? (S.mail && S.mail.status === "link" ? `أول مرة بالإيميل: اكتب رمزك في مينزو علشان نربط الحساب ده بيك` : `${esc((S.mail && S.mail.name) || "")} — اكتب رمزك`) : "اكتب رمزك عشان تدخل";
+  gate(`<h1>${esc(S.storeName || "SYS Minzo")}</h1><p class="sub">${sub}</p>${em ? `<p class="gnote" style="margin-top:-6px">${esc(S.mail && S.mail.email || "")} · جهاز شخصي</p>` : ""}
   <div class="pinrow" id="pinDots">${"<i></i>".repeat(4)}</div>
   <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-k="${n}">${n}</button>`).join("")}<button class="fn" data-k="pw">كلمة سر</button><button data-k="0">0</button><button class="fn" data-k="del">مسح</button></div>
-  <div class="gerr" id="pErr">${esc(msg || "")}</div>`);
+  <div class="gerr" id="pErr">${esc(msg || "")}</div>${em ? `<button class="btn ghost" style="width:100%;margin-top:10px" id="mailOut">خروج من الإيميل</button>` : `<button class="btn ghost" style="width:100%;margin-top:10px" id="toMail">دخول الإدارة بالإيميل</button>`}`);
+  if (em) $("#mailOut").onclick = mailSignOut; else $("#toMail").onclick = () => emailForm();
   $("#gate .pad").onclick = e => { const b = e.target.closest("button"); if (!b) return; const k = b.dataset.k;
     if (k === "del") pinBuf = pinBuf.slice(0, -1); else if (k === "pw") return passwordLogin(); else if (pinBuf.length < 8) pinBuf += k;
     drawDots(); if (pinBuf.length >= 4) clearTimeout(S._pt), S._pt = setTimeout(() => tryLogin(pinBuf), pinBuf.length >= 6 ? 50 : 700); };
@@ -179,12 +196,15 @@ function passwordLogin() { gate(`<h1>الدخول بكلمة السر</h1><div c
 async function tryLogin(p) {
   if (S._logging) return; S._logging = true;
   try {
-    const r = await rpc("staff_login", { p_pin: p });
+    const r = await rpc(MODE === "email" ? "email_pin_login" : "staff_login", { p_pin: p });
+    if (r.error && MODE === "email" && ["NEED_PASSWORD", "EMAIL_DISABLED", "NO_EMAIL"].includes(r.error)) { await mailC.auth.signOut().catch(() => {}); MODE = "device"; return emailForm(errText(r.error)); }
     if (r.error) { pinBuf = ""; if ($("#pinDots")) drawDots();
       const t = r.error === "WRONG_PIN" ? `الرمز غلط — فاضل ${r.left} محاولات قبل القفل.` : r.error === "LOCKED" ? `الجهاز مقفول لحد ${new Date(r.until).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}.` : errText(r.error);
       $("#pErr").textContent = t; return; }
-    S.sess = r; S.idle = Date.now(); S.dir = null; S.cash = null; S.tr = null; P.shift = undefined; setTimeout(qFlush, 1500);
+    S.sess = r; window.__mzTok = r.token; S.idle = Date.now(); S.dir = null; S.cash = null; S.tr = null; P.shift = undefined; setTimeout(qFlush, 1500);
     if (r.staff.must_change) return changePin(true);
+    if (MODE === "email") S.mail = Object.assign(S.mail || {}, { status: "ready", name: r.staff.name });
+    if (MODE === "email" && r.staff.must_change_pw) return changePassword(true);
     await enterApp();
   } catch (e) { $("#pErr").textContent = errText(e); pinBuf = ""; if ($("#pinDots")) drawDots(); }
   finally { S._logging = false; }
@@ -206,14 +226,71 @@ function changePin(forced) {
   };
   const c = root.querySelector("#cCancel"); if (c) c.onclick = closeModal;
 }
-function lockNow(msg) { if (T()) rpc("staff_logout", { p_token: T() }).catch(() => {}); S.sess = null; closeModal(); lockScreen(msg); }
-setInterval(() => { if (S.sess && Date.now() - S.idle > 10 * 60 * 1000) lockNow("اتقفل تلقائي بعد ١٠ دقايق من غير استخدام."); }, 20000);
+function lockNow(msg) { if (T()) rpc("staff_logout", { p_token: T() }).catch(() => {}); S.sess = null; window.__mzTok = null; closeModal(); lockScreen(msg); }
+const lockMin = () => { const m = S.store && S.store.auto_lock_min; return m == null ? 10 : +m; };
+setInterval(() => { const m = lockMin(); if (S.sess && m > 0 && Date.now() - S.idle > m * 60 * 1000) lockNow(`اتقفل تلقائي بعد ${m} دقيقة من غير استخدام.`); }, 20000);
+
+/* ---------- email sign-in (a personal phone or laptop, no device approval) ---------- */
+async function emailFlow(msg) {
+  try {
+    const { data: { session } } = await mailC.auth.getSession(); S.mail = { email: session && session.user && session.user.email };
+    const r = await rpc("email_session"); Object.assign(S.mail, r);
+    if (r.status === "ready" || r.status === "link") { const st = await devC.rpc("setup_status").then(x => x.data).catch(() => null); if (st && st.store) S.storeName = st.store; return lockScreen(msg); }
+    if (r.status === "pending") return gate(`<h1>حسابك مستني التفعيل</h1><p class="sub">الحساب ${esc(S.mail.email || "")} اتعمل. المالك أو المدير العام لازم يربطه باسمك ويفعّله من شاشة المستخدمين.</p><button class="btn gold" style="width:100%" id="mChk">اتفعّل؟ تحقق تاني</button><button class="btn ghost" style="width:100%;margin-top:10px" id="mOwn">أنا المالك أو المدير العام — اربط برمزي</button><button class="btn ghost" style="width:100%;margin-top:10px" id="mailOut">خروج</button>`), $("#mChk").onclick = () => emailFlow(), $("#mOwn").onclick = () => { S.mail.status = "link"; lockScreen(); }, $("#mailOut").onclick = mailSignOut;
+    if (r.status === "disabled") return gate(`<h1>الدخول بالإيميل مقفول</h1><p class="sub">الدخول بالإيميل مقفول لحسابك. كلّم المالك أو المدير العام.</p><button class="btn ghost" style="width:100%" id="mailOut">خروج</button>`), $("#mailOut").onclick = mailSignOut;
+    await mailC.auth.signOut().catch(() => {}); MODE = "device"; return emailForm(r.status === "need_password" ? "ادخل بالإيميل والباسورد تاني." : "");
+  } catch (e) { gate(`<h1>SYS Minzo</h1><p class="sub">مش قادر يوصل للسيرفر</p><div class="gerr">${esc(errText(e))}</div><button class="btn gold" style="width:100%;margin-top:12px" id="retry">حاول تاني</button>`); $("#retry").onclick = boot; }
+}
+async function mailSignOut() { if (T()) await rpc("staff_logout", { p_token: T() }).catch(() => {}); S.sess = null; window.__mzTok = null; await mailC.auth.signOut().catch(() => {}); MODE = "device"; S.mail = null; boot(); }
+function emailForm(msg) {
+  gate(`<h1>دخول الإدارة بالإيميل</h1><p class="sub">من أي موبايل أو لابتوب. أول مرة بس بالإيميل والباسورد، وبعد كده برمزك.</p>
+  <div class="stack"><div class="field"><label>الإيميل</label><input class="inp" id="mEmail" type="email" autocomplete="username" dir="ltr"></div>
+  <div class="field"><label>الباسورد</label><input class="inp" id="mPw" type="password" autocomplete="current-password" dir="ltr"></div>
+  <button class="btn gold" id="mGo">دخول</button><div class="gerr" id="mErr">${esc(msg || "")}</div>
+  <button class="btn ghost" id="mForgot">نسيت الباسورد؟</button><button class="btn ghost" id="mNew">عمل حساب جديد</button><button class="btn ghost" id="mBack">رجوع</button></div>`);
+  const go = async () => { const email = $("#mEmail").value.trim(), password = $("#mPw").value; if (!email || !password) return ($("#mErr").textContent = "اكتب الإيميل والباسورد.");
+    busy($("#mGo"), true);
+    const { error } = await mailC.auth.signInWithPassword({ email, password });
+    if (error) { busy($("#mGo"), false); return ($("#mErr").textContent = errText(error)); }
+    MODE = "email"; emailFlow(); };
+  $("#mGo").onclick = go; $("#mPw").onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#mForgot").onclick = () => { $("#mErr").textContent = "كلّم المالك أو المدير العام — بيعملك باسورد مؤقت جديد من شاشة المستخدمين."; };
+  $("#mNew").onclick = signupForm; $("#mBack").onclick = boot;
+}
+function signupForm() {
+  gate(`<h1>عمل حساب جديد</h1><p class="sub">الحساب هيفضل مستني لحد ما المالك أو المدير العام يربطه باسمك ويفعّله.</p>
+  <div class="stack"><div class="field"><label>اسمك</label><input class="inp" id="nName"></div>
+  <div class="field"><label>الإيميل</label><input class="inp" id="nEmail" type="email" autocomplete="username" dir="ltr"></div>
+  <div class="field"><label>الباسورد (8 حروف أو أكتر)</label><input class="inp" id="nPw" type="password" autocomplete="new-password" dir="ltr"></div>
+  <div class="field"><label>تأكيد الباسورد</label><input class="inp" id="nPw2" type="password" autocomplete="new-password" dir="ltr"></div>
+  <button class="btn gold" id="nGo">عمل الحساب</button><div class="gerr" id="nErr"></div><button class="btn ghost" id="nBack">رجوع</button></div>`);
+  $("#nBack").onclick = () => emailForm();
+  $("#nGo").onclick = async e => { const name = $("#nName").value.trim(), email = $("#nEmail").value.trim(), pw = $("#nPw").value;
+    if (!name || !email || !pw) return ($("#nErr").textContent = "املا كل الخانات."); if (pw !== $("#nPw2").value) return ($("#nErr").textContent = "الباسوردين مش زي بعض.");
+    busy(e.target, true);
+    try { await adminFn({ action: "signup", name, email, password: pw }); gate(`<h1>اتعمل الحساب</h1><p class="sub">الحساب ${esc(email)} مستني المالك أو المدير العام يفعّله. بعد التفعيل ادخل بالإيميل والباسورد.</p><button class="btn gold" style="width:100%" id="nOk">تمام</button>`); $("#nOk").onclick = () => emailForm(); }
+    catch (er) { $("#nErr").textContent = errText(er); busy(e.target, false); } };
+}
+function changePassword(forced) {
+  gate(`<h1>اختار باسورد جديد</h1><p class="sub">${forced ? "الباسورد ده مؤقت — لازم تختار باسورد جديد قبل ما تكمّل." : ""}</p><div class="stack">
+   <div class="field"><label>الباسورد الجديد (8 حروف أو أكتر)</label><input class="inp" id="wNew" type="password" autocomplete="new-password" dir="ltr"></div>
+   <div class="field"><label>تأكيد الباسورد</label><input class="inp" id="wNew2" type="password" autocomplete="new-password" dir="ltr"></div>
+   <button class="btn gold" id="wGo">حفظ</button><div class="gerr" id="wErr"></div></div>`);
+  $("#wGo").onclick = async e => { const n = $("#wNew").value; if (n.length < 8) return ($("#wErr").textContent = errText("WEAK_PASSWORD")); if (n !== $("#wNew2").value) return ($("#wErr").textContent = "الباسوردين مش زي بعض.");
+    busy(e.target, true);
+    const { error } = await mailC.auth.updateUser({ password: n });
+    if (error) { busy(e.target, false); return ($("#wErr").textContent = errText(error)); }
+    await rpc("email_pw_changed").catch(() => {}); S.sess.staff.must_change_pw = false; toast("اتغيّر الباسورد."); await enterApp(); };
+}
+/* account changes that need the master key go through the server function */
+async function adminFn(body) { const { data, error } = await sb.functions.invoke("minzo-admin", { body: Object.assign({ token: T() }, body) }); if (error) throw error; if (data && data.error) throw new Error(data.error); return data; }
 ["click", "keydown", "touchstart"].forEach(ev => document.addEventListener(ev, () => { if (S.sess) S.idle = Date.now(); }, { passive: true }));
 
 /* =====================================================================
    DATA
    ===================================================================== */
-async function q(table, sel, mod) { let x = sb.from(table).select(sel || "*"); if (mod) x = mod(x); const { data, error } = await x; if (error) throw error; return data; }
+const MASKED = new Set(["items", "sale_lines", "return_lines", "stock_layers", "stock_moves", "purchase_lines"]);
+async function q(table, sel, mod) { let x = MASKED.has(table) ? sb.rpc(table + "_v", {}, { get: true }).select(sel || "*") : sb.from(table).select(sel || "*"); if (mod) x = mod(x); const { data, error } = await x; if (error) throw error; return data; }
 async function loadCore() {
   const [locs, depts, groups, store] = await Promise.all([q("locations", "*", x => x.order("id")), q("departments", "*", x => x.order("sort")), q("item_groups", "*", x => x.order("name")), q("store")]);
   S.locs = locs; S.depts = depts; S.groups = groups; S.store = store[0];
@@ -387,9 +464,13 @@ H.stock = () => { const qi = $("#sq"); qi.oninput = () => { S.q = qi.value; cons
 /* ---------- staff ---------- */
 V.users = () => { const L = S.staffList; let h = header(`<button class="btn gold" data-act="staffNew">${ico("plus")} موظف جديد</button>`);
   if (!L) { setTimeout(loadStaff, 0); return h + `<div class="spin"></div>`; }
-  h += `<div class="tw rise"><table><thead><tr><th>الاسم</th><th>الدور</th><th>المكان</th><th>الرمز</th><th>الحالة</th><th></th></tr></thead><tbody>${L.map(u => `<tr><td>${esc(u.name)}</td><td>${esc((S.roles.find(r => r.id === u.role_id) || {}).name || u.role_id)}</td><td>${u.location_id ? esc(locName(u.location_id)) : "كل الأماكن"}</td><td>${u.has_pin ? (u.must_change ? `<span class="chip warn">مؤقت</span>` : `<span class="chip ok">متغيّر</span>`) : `<span class="chip bad">مفيش</span>`}</td><td>${u.active ? `<span class="chip ok">شغال</span>` : `<span class="chip plain">موقوف</span>`}</td><td><button class="btn sm ghost" data-act="staffEdit" data-id="${u.id}">تعديل</button></td></tr>`).join("")}</tbody></table></div>`;
+  const pend = (S.mailAcc && S.mailAcc.pending) || [];
+  if (pend.length) h += `<div class="card rise"><h3>حسابات إيميل مستنية التفعيل <span class="chip warn">${pend.length}</span></h3><div class="tw"><table><thead><tr><th>الاسم اللي كتبه</th><th>الإيميل</th><th>من إمتى</th><th></th></tr></thead><tbody>${pend.map(p => `<tr><td>${esc(p.name)}</td><td dir="ltr" style="text-align:right">${esc(p.email)}</td><td class="num">${esc(new Date(p.at).toLocaleString("ar-EG"))}</td><td class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm gold" data-act="pendLink" data-id="${p.auth_user_id}">ربط بموظف</button><button class="btn sm ghost" data-act="pendDrop" data-id="${p.auth_user_id}">حذف</button></td></tr>`).join("")}</tbody></table></div>
+    <p class="dim" style="font-size:12.5px;margin-bottom:0">الحساب ده مش بيشوف أي حاجة لحد ما تربطه باسم موظف. بعد الربط بيدخل بالإيميل وبعدين برمز الموظف.</p></div>`;
+  h += `<div class="tw rise"><table><thead><tr><th>الاسم</th><th>الدور</th><th>المكان</th><th>الرمز</th><th>الإيميل</th><th>الحالة</th><th></th></tr></thead><tbody>${L.map(u => `<tr><td>${esc(u.name)}</td><td>${esc((S.roles.find(r => r.id === u.role_id) || {}).name || u.role_id)}</td><td>${u.location_id ? esc(locName(u.location_id)) : "كل الأماكن"}</td><td>${u.has_pin ? (u.must_change ? `<span class="chip warn">مؤقت</span>` : `<span class="chip ok">متغيّر</span>`) : `<span class="chip bad">مفيش</span>`}</td><td>${u.email_login ? (u.email ? `<span class="chip ok" dir="ltr">${esc(u.email)}</span>${u.pw_must_change ? ` <span class="chip warn">باسورد مؤقت</span>` : ""}` : `<span class="chip warn">مفتوح — مش مربوط</span>`) : (u.email ? `<span class="chip plain" dir="ltr">${esc(u.email)} · مقفول</span>` : `<span class="dim">—</span>`)}</td><td>${u.active ? `<span class="chip ok">شغال</span>` : `<span class="chip plain">موقوف</span>`}</td><td><button class="btn sm ghost" data-act="staffEdit" data-id="${u.id}">تعديل</button></td></tr>`).join("")}</tbody></table></div>`;
   return h; };
-async function loadStaff() { try { const [l, roles] = await Promise.all([rpc("staff_list", { p_token: T() }), q("roles", "id,name,max_discount_pct,max_amount", x => x.order("created_at"))]); S.staffList = l; S.roles = roles; if (S.route === "users") render(); } catch (e) { toast(errText(e), true); } }
+async function loadStaff() { try { const [l, roles, acc] = await Promise.all([rpc("staff_list", { p_token: T() }), q("roles", "id,name,max_discount_pct,max_amount", x => x.order("created_at")), rpc("email_accounts", { p_token: T() }).catch(() => null)]); S.staffList = l; S.roles = roles; S.mailAcc = acc; if (S.route === "users") render(); } catch (e) { toast(errText(e), true); } }
+function genPw() { const a = "abcdefghjkmnpqrstuvwxyz23456789", r = crypto.getRandomValues(new Uint8Array(10)); return Array.from(r, v => a[v % a.length]).join(""); }
 function genPin() { for (;;) { const p = String(Math.floor(100000 + Math.random() * 900000)); const d = [...p].map(Number); if (/^(\d)\1+$/.test(p) || d.every((x, i) => !i || x === d[i - 1] + 1) || d.every((x, i) => !i || x === d[i - 1] - 1)) continue; return p; } }
 function staffModal(u) {
   const own = S.sess.role.id === "owner", top = own || S.sess.role.id === "gm", roles = S.roles.filter(r => own || (r.id !== "owner" && (top || !["gm", "mgr", "acct"].includes(r.id))));
@@ -400,13 +481,36 @@ function staffModal(u) {
    <div class="field"><label>المكان</label><select class="inp" id="uLoc" ${top ? "" : "disabled"}><option value="">كل الأماكن</option>${S.locs.map(l => `<option value="${l.id}" ${x.location_id === l.id ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></div></div>
    <div class="field"><label>${u ? "رمز مؤقت جديد (اختياري)" : "رمز مؤقت"} — الموظف لازم يغيّره أول دخول</label><div class="row" style="flex-wrap:nowrap;gap:6px"><input class="inp num" id="uPin" value="${u ? "" : genPin()}"><button class="btn sm" id="uGen">توليد</button></div></div>
    ${u ? `<label class="row" style="gap:8px"><input type="checkbox" class="ck" id="uAct" ${x.active ? "checked" : ""}> الحساب شغال</label>` : ""}
+   ${u ? `<div class="card" style="margin:4px 0;padding:14px"><h3 style="margin:0 0 8px">الدخول بالإيميل من أي جهاز</h3>
+     <label class="row" style="gap:8px"><input type="checkbox" class="ck" id="uMail" ${x.email_login ? "checked" : ""}> يدخل بالإيميل من أي جهاز (موبايل أو لابتوب)</label>
+     <div id="uMailWarn" style="margin-top:6px"></div>
+     ${x.email ? `<div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center"><span class="chip ok" dir="ltr">${esc(x.email)}</span><button class="btn sm" id="uPwReset">باسورد مؤقت جديد</button><button class="btn sm ghost" id="uUnlink">فك الربط</button></div>`
+       : `<div class="stack" style="margin-top:10px;gap:8px"><span class="dim" style="font-size:12.5px">اعمله حساب إيميل بباسورد مؤقت (بيغيّره أول ما يدخل)${((S.mailAcc && S.mailAcc.pending) || []).length ? "، أو اربطه بحساب عمله بنفسه من جدول «مستنية التفعيل»" : ""}:</span>
+         <div class="grid g2"><input class="inp" id="uEmail" type="email" placeholder="الإيميل" dir="ltr"><input class="inp" id="uTmpPw" placeholder="باسورد مؤقت (8 أو أكتر)" dir="ltr" value="${genPw()}"></div>
+         <button class="btn sm" id="uMkMail" style="align-self:flex-start">عمل حساب الإيميل</button></div>`}
+     <div id="uMailErr"></div></div>` : ""}
    <div id="uErr"></div><div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" id="uCancel">إلغاء</button><button class="btn gold" id="uSave">حفظ</button></div></div>`);
   $("#uCancel").onclick = closeModal; $("#uGen").onclick = () => { $("#uPin").value = genPin(); };
+  if (u) {
+    const warn = () => { const on = $("#uMail").checked, r = $("#uRole").value; $("#uMailWarn").innerHTML = on && !["owner", "gm", "mgr", "acct"].includes(r) ? `<div class="warnbox">الدور ده مش إداري. الدخول بالإيميل هيخلّيه يفتح السيستم من موبايله برّه المعرض. هيشوف بس اللي دوره يسمح بيه.</div>` : ""; };
+    $("#uMail").onchange = warn; $("#uRole").addEventListener("change", warn); warn();
+    const mErr = t => { $("#uMailErr").innerHTML = t ? `<div class="warnbox" style="margin-top:8px">${esc(t)}</div>` : ""; };
+    const done = (t, extra) => { closeModal(); S.staffList = null; render(); if (extra) modal(extra); else toast(t); };
+    if ($("#uMkMail")) $("#uMkMail").onclick = async e => { const email = $("#uEmail").value.trim(), pw = $("#uTmpPw").value.trim(); busy(e.target, true);
+      try { await adminFn({ action: "create", staff_id: u.id, email, password: pw }); done("", `<h2>حساب الإيميل جاهز</h2><p class="muted">ادّي البيانات دي لـ ${esc(u.name)}. هيطلب منه يغيّر الباسورد أول ما يدخل، وبعد كده الجهاز بيفتح برمزه.</p><div class="okbox" dir="ltr" style="text-align:center;font-size:18px;line-height:1.9">${esc(email)}<br><b class="num" style="font-size:24px;letter-spacing:2px">${esc(pw)}</b></div><button class="btn gold" style="width:100%;margin-top:12px" onclick="document.getElementById('modal').remove()">تمام</button>`); }
+      catch (er) { mErr(errText(er)); busy(e.target, false); } };
+    if ($("#uPwReset")) $("#uPwReset").onclick = async e => { const pw = genPw(); if (!confirm(`هيتعمل باسورد مؤقت جديد لـ ${u.name}، وأجهزته الشخصية هتطلب الإيميل والباسورد تاني. تكمّل؟`)) return; busy(e.target, true);
+      try { await adminFn({ action: "reset", staff_id: u.id, password: pw }); done("", `<h2>الباسورد المؤقت الجديد</h2><p class="muted">ادّيه لـ ${esc(u.name)}. هيطلب منه يغيّره أول ما يدخل.</p><div class="okbox" dir="ltr" style="text-align:center;font-size:18px;line-height:1.9">${esc(x.email)}<br><b class="num" style="font-size:24px;letter-spacing:2px">${esc(pw)}</b></div><button class="btn gold" style="width:100%;margin-top:12px" onclick="document.getElementById('modal').remove()">تمام</button>`); }
+      catch (er) { mErr(errText(er)); busy(e.target, false); } };
+    if ($("#uUnlink")) $("#uUnlink").onclick = async e => { if (!confirm(`فك ربط الإيميل من ${u.name}؟ كل جلساته هتتقفل.`)) return; busy(e.target, true);
+      try { await rpc("staff_unlink", { p_token: T(), p_staff: u.id }); done("اتفك الربط."); } catch (er) { mErr(errText(er)); busy(e.target, false); } };
+  }
   $("#uSave").onclick = async e => {
     const name = $("#uName").value.trim(), pin = $("#uPin").value.trim(); if (!name) return ($("#uErr").innerHTML = `<div class="warnbox">اكتب الاسم.</div>`);
     if (!u && !pin) return ($("#uErr").innerHTML = `<div class="warnbox">اكتب رمز مؤقت.</div>`);
     busy(e.target, true);
     try { await rpc("staff_save", { p_token: T(), p_id: u ? u.id : null, p_name: name, p_role: $("#uRole").value, p_location: $("#uLoc").value ? +$("#uLoc").value : null, p_active: u ? $("#uAct").checked : true, p_temp_pin: pin || null });
+      if (u && $("#uMail") && $("#uMail").checked !== !!x.email_login) await rpc("staff_email_set", { p_token: T(), p_staff: u.id, p_on: $("#uMail").checked });
       closeModal(); if (pin) modal(`<h2>الرمز المؤقت</h2><p class="muted">ادّي الرمز ده لـ ${esc(name)}. هيطلب منه يغيّره أول ما يدخل.</p><div class="okbox" style="text-align:center;font-size:28px;letter-spacing:6px" class="num">${esc(pin)}</div><button class="btn gold" style="width:100%;margin-top:12px" onclick="document.getElementById('modal').remove()">تمام</button>`);
       S.staffList = null; render(); }
     catch (er) { $("#uErr").innerHTML = `<div class="warnbox">${esc(errText(er))}</div>`; busy(e.target, false); }
@@ -1030,6 +1134,9 @@ V.settings = () => { let h = header(); const st = S.store || {}, own = S.sess.ro
   h += `<div class="card rise"><h3>شعار المحل</h3><div class="row" style="gap:16px;flex-wrap:wrap;align-items:center"><div style="width:140px;height:90px;border:1px dashed var(--line2);border-radius:10px;display:grid;place-items:center;background:#fff;padding:6px">${LOGO() ? logoImg("78px") : `<span class="dim" style="font-size:12px">مفيش شعار</span>`}</div>
     <div class="stack" style="gap:8px"><div class="row" style="gap:8px"><label class="btn gold" for="stLogo" style="cursor:pointer">${LOGO() ? "تغيير الشعار" : "رفع الشعار"}</label><input type="file" id="stLogo" accept="image/png,image/jpeg,image/webp" hidden>${LOGO() ? `<button class="btn ghost" data-act="stLogoDel">إزالة</button>` : ""}</div>
     <span class="dim" style="font-size:12.5px">PNG بخلفية شفافة أحسن حاجة. الشعار بيظهر في القائمة، وشاشة الدخول، والإيصال، والفاتورة الضريبية، والتقرير النهائي.</span><div id="stLogoErr"></div></div></div></div>`;
+  const al = st.auto_lock_min == null ? 10 : +st.auto_lock_min;
+  h += `<div class="card rise"><h3>القفل التلقائي</h3><div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap"><div class="field" style="max-width:260px"><label>يتقفل بعد كام دقيقة من غير استخدام</label><input class="inp num" type="number" min="0" max="240" id="stLock" value="${al}"></div><button class="btn gold" data-act="stLockSave">حفظ</button></div>
+    <p class="dim" style="font-size:12.5px;margin:8px 0 0">بيتطبق على كل الأجهزة، في المعارض والأجهزة الشخصية. ${al === 0 ? `<b style="color:var(--bad)">دلوقتي القفل التلقائي مقفول.</b>` : ""}</p><div id="stLockMsg"></div></div>`;
   h += `<div class="grid g2"><div class="card rise"><h3>بيانات المحل</h3><div class="stack"><div class="field"><label>اسم المحل</label><input class="inp" id="stN" value="${esc(st.name || "")}"></div>
     <div class="grid g2"><div class="field"><label>ميعاد تقفيل اليوم</label><input class="inp" type="time" id="stC" value="${esc(String(st.day_close_time || "06:00").slice(0, 5))}"></div><div class="field"><label>ميعاد فتح اليوم الجديد</label><input class="inp" type="time" id="stO" value="${esc(String(st.day_open_time || "07:00").slice(0, 5))}"></div></div>
     <p class="dim" style="margin:0;font-size:12.5px">البيع بيتقفل بين ميعاد التقفيل وميعاد الفتح، وأي بيع بعد نص الليل وقبل التقفيل بيتحسب على اليوم اللي فات.</p>
@@ -1162,6 +1269,10 @@ async function ops4Click(k, a) {
   else if (k === "coaSave") wrap(() => rpc("gl_account_save", { p_token: T(), p_parent: a.dataset.c, p_name: $("#coN").value.trim(), p_name_en: $("#coE").value.trim() }).then(c => toast("اتضاف الحساب " + c)), async () => { closeModal(); S.gl.loaded = null; render(); }, "#coErr");
   else if (k === "perSet") { const c = a.dataset.c === "1"; if (!confirm(c ? `إقفال شهر ${a.dataset.m}؟ مش هينفع يتسجّل عليه قيد يدوي بعد كده.` : `إعادة فتح شهر ${a.dataset.m}؟`)) return; wrap(() => rpc("gl_period_set", { p_token: T(), p_month: a.dataset.m, p_close: c }), async () => { S.gl.loaded = null; render(); }); }
   else if (k === "yearClose") { const y = +a.dataset.y; if (!confirm(`إقفال سنة ${y}؟\nصافي الربح هيترحّل للأرباح المحتجزة والـ ١٢ شهر هيتقفلوا. الخطوة دي مش بترجع.`)) return; wrap(() => rpc("gl_year_close", { p_token: T(), p_year: y }).then(r => toast(`اتقفلت السنة · صافي الربح ${fmt(r.net_profit, 1)}`)), async () => { S.gl.loaded = null; render(); }); }
+  else if (k === "stLockSave") { const v = Math.round(+$("#stLock").value);
+    if (!(v >= 0 && v <= 240)) return ($("#stLockMsg").innerHTML = `<div class="warnbox">اكتب رقم من 0 لـ 240.</div>`);
+    if (v === 0 && !confirm("صفر يعني الأجهزة مش هتتقفل لوحدها أبدًا، وأي حد يقدر يستخدم جهاز سايبه موظف مفتوح. متأكد؟")) return;
+    busy(a, true); rpc("store_autolock_save", { p_token: T(), p_min: v }).then(async () => { await loadCore(); toast(v ? `القفل التلقائي بعد ${v} دقيقة.` : "القفل التلقائي اتقفل."); render(); }).catch(e => { busy(a, false); toast(errText(e), true); }); }
   else if (k === "stLogoDel") { if (!confirm("تشيل الشعار؟")) return; busy(a, true); rpc("store_logo_save", { p_token: T(), p_logo: null }).then(async () => { await loadCore(); toast("اتشال الشعار."); render(); }).catch(e => { busy(a, false); toast(errText(e), true); }); }
   else if (k === "stSave") { const p = { name: $("#stN").value.trim(), day_close_time: $("#stC").value, day_open_time: $("#stO").value, price_alert_pct: +$("#stP").value || 10, min_margin_pct: +$("#stM").value || 0, vat_registered: $("#stV").checked };
     if (p.vat_registered) Object.assign(p, { vat_rin: $("#stR").value.trim(), vat_from: $("#stF").value, vat_rate: +$("#stRt").value, prices_include_vat: $("#stI").value === "1" });
@@ -1209,6 +1320,11 @@ document.addEventListener("click", e => {
   else if (k === "impGo") impRun(true, a);
   else if (k === "impTpl") { const H0 = IFIELDS.map(f => f[1]); const ws = XLSX.utils.aoa_to_sheet([H0, ["طقم حلل جرانيت ١٠ قطع", "", "", "أدوات منزلية", "حلل وأواني", "طقم", 4200, 2850, 10, 3, "لا", 0, ""], ["غسالة ٧ كيلو", "", "", "أجهزة كهربائية", "غسالات", "جهاز", 21900, 15800, 2, 1, "نعم", 24, "SN-001, SN-002"]]); ws["!views"] = [{ RTL: true }]; ws["!cols"] = H0.map(() => ({ wch: 18 })); const wb = XLSX.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] }; XLSX.utils.book_append_sheet(wb, ws, "الأصناف"); XLSX.writeFile(wb, "قالب-استيراد-الأصناف.xlsx"); }
   else if (k === "staffNew") staffModal(null);
+  else if (k === "pendLink") { const p = (S.mailAcc.pending || []).find(x => x.auth_user_id === a.dataset.id), free = S.staffList.filter(u => !u.email && u.active);
+    modal(`<h2>ربط حساب إيميل بموظف</h2><p class="muted" dir="ltr" style="text-align:right">${esc(p.email)} — «${esc(p.name)}»</p><div class="stack"><div class="field"><label>الموظف</label><select class="inp" id="plStaff">${free.map(u => `<option value="${u.id}">${esc(u.name)} — ${esc((S.roles.find(r => r.id === u.role_id) || {}).name || u.role_id)}</option>`).join("")}</select></div>
+      <p class="dim" style="font-size:12.5px;margin:0">بعد الربط بيدخل بالإيميل من أي جهاز، وبعدين برمز الموظف ده. صلاحياته هي صلاحيات دور الموظف.</p><div id="plErr"></div><div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" id="plGo" ${free.length ? "" : "disabled"}>ربط وتفعيل</button></div></div>`);
+    $("#plGo").onclick = async e => { busy(e.target, true); try { await rpc("staff_link", { p_token: T(), p_staff: $("#plStaff").value, p_auth: p.auth_user_id }); closeModal(); toast("اتربط واتفعّل."); S.staffList = null; render(); } catch (er) { $("#plErr").innerHTML = `<div class="warnbox">${esc(errText(er))}</div>`; busy(e.target, false); } }; }
+  else if (k === "pendDrop") { if (!confirm("تحذف طلب الحساب ده؟")) return; busy(a, true); adminFn({ action: "drop_pending", auth_user_id: a.dataset.id }).then(() => { toast("اتحذف."); S.staffList = null; render(); }).catch(e => { busy(a, false); toast(errText(e), true); }); }
   else if (k === "staffEdit") staffModal(S.staffList.find(u => u.id === a.dataset.id));
   else if (k === "devEdit") devModal(S.devList.find(d => d.id === a.dataset.id));
   else opsClick(k, a);

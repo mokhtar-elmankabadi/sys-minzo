@@ -1,5 +1,5 @@
 /* App shell cache: the screens open even without internet; data always comes from the server. */
-const V = "minzo-shell-v14";
+const V = "minzo-shell-v15";
 const SHELL = ["./", "index.html", "css/app.css", "css/live.css", "js/config.js", "js/app.js", "js/mzprint.js", "js/mzpdf.js", "js/ops1.js", "js/ops2.js", "js/ops3.js", "js/ops4.js", "js/vendor/qrcode.js", "js/vendor/supabase.js", "js/vendor/xlsx.full.min.js", "icon.svg", "manifest.webmanifest"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

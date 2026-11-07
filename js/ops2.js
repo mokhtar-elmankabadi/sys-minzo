@@ -123,9 +123,9 @@ function rlRead() { const R = S.rl, base = R.roles.find(r => r.id === R.sel), r 
 H.roles = () => { const R = S.rl; if (!R || !R.loaded) return; document.querySelectorAll("#view input").forEach(el => { if (el.id !== "rlPin" && el.id !== "rlWhy") el.addEventListener("change", () => { R.draft = rlRead(); }); }); };
 
 /* ---------- preview the system through another role (read-only) ---------- */
-const READS = /^(setup_status|staff_directory|staff_list|customers_list|customer_history|serial_lookup|day_close_preview|gl_journal|commission_report|offers_preview|items_stale|shift_current|audit_verify|backups_list|staff_logout)$/;
+const READS = /^(\w+_v|email_session|email_accounts|setup_status|staff_directory|staff_list|customers_list|customer_history|serial_lookup|day_close_preview|gl_journal|commission_report|offers_preview|items_stale|shift_current|audit_verify|backups_list|staff_logout)$/;
 const _rpc = M.sb.rpc.bind(M.sb);
-M.sb.rpc = function (fn, args) { if (S.preview && !READS.test(fn)) return Promise.resolve({ data: null, error: { message: "PREVIEW_MODE" } }); return _rpc(fn, args); };
+M.sb.rpc = function (fn, args, opts) { if (S.preview && !READS.test(fn)) return Promise.resolve({ data: null, error: { message: "PREVIEW_MODE" } }); return _rpc(fn, args, opts); };
 function previewStart(role) { S.preview = { real: S.sess.role, route: S.route }; S.sess.role = Object.assign({}, role, { perms: role.perms || {}, sens: role.sens || [] }); banner(); S.route = M.NAV.flatMap(g => g[1]).find(k => { try { return M.allowed(k); } catch (e) { return false; } }) || "dash"; render(); toast(`معاينة بعيون «${role.name}» — مفيش حفظ لحد ما تخرج.`); }
 function previewEnd() { if (!S.preview) return; S.sess.role = S.preview.real; const r = S.preview.route; S.preview = null; banner(); S.route = r; render(); }
 function banner() { let b = $("#mzPrev"); if (!S.preview) { if (b) b.remove(); return; } if (!b) { b = document.createElement("div"); b.id = "mzPrev"; b.style.cssText = "position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:60;background:var(--gold);color:#111;padding:8px 14px;border-radius:12px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.3);font-size:13.5px"; document.body.appendChild(b); }

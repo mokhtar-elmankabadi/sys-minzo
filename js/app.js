@@ -24,7 +24,7 @@ const KINDS = { admin: "إدارة", cashier: "كاشير", warehouse: "جهاز
 
 /* ---------- server error codes → Arabic ---------- */
 const ERR = {
-  WRONG_PIN: "الرمز غلط.", USE_EMAIL: "الجهاز ده جهاز شخصي — ادخل برمزك بعد الإيميل.", NEED_PASSWORD: "ادخل بالإيميل والباسورد تاني.", EMAIL_DISABLED: "الدخول بالإيميل مقفول لحسابك — كلّم المالك.", PENDING: "حسابك لسه مستني المالك يفعّله.",
+  WRONG_PIN: "الرمز غلط.", USE_EMAIL: "الجهاز ده جهاز شخصي — ادخل بالإيميل والباسورد.", NEED_PASSWORD: "ادخل بالإيميل والباسورد تاني.", EMAIL_DISABLED: "الدخول بالإيميل مقفول لحسابك — كلّم المالك.", PENDING: "حسابك لسه مستني المالك يفعّله.",
   BAD_EMAIL: "الإيميل مش مظبوط.", WEAK_PASSWORD: "الباسورد لازم يكون 8 حروف أو أكتر.", EMAIL_TAKEN: "الإيميل ده عليه حساب قبل كده.", ALREADY_LINKED: "الموظف ده مربوط بإيميل خلاص.", NOT_LINKED: "الموظف ده مش مربوط بإيميل.",
   STAFF_INACTIVE: "الموظف موقوف.", TOO_MANY: "طلبات كتير — جرّب بعد ساعة.", AUTH_ERROR: "حصلت مشكلة في عمل الحساب — جرّب تاني.", NAME_REQUIRED: "اكتب الاسم.", BAD_VALUE: "القيمة مش مظبوطة.",
   "Invalid login credentials": "الإيميل أو الباسورد غلط.", LOCKED: "الجهاز اتقفل بعد 5 محاولات غلط. جرّب بعد 5 دقايق.", WRONG_LOCATION: "الرمز ده لموظف في فرع تاني.",
@@ -179,6 +179,7 @@ function pendingDevice(d) {
 let pinBuf = "";
 function lockScreen(msg) {
   S.sess = null; window.__mzTok = null; pinBuf = "";
+  if (MODE === "email" && !(S.mail && S.mail.status === "link")) return mailLock(msg);
   const em = MODE === "email", sub = em ? (S.mail && S.mail.status === "link" ? `أول مرة بالإيميل: اكتب رمزك في مينزو علشان نربط الحساب ده بيك` : `${esc((S.mail && S.mail.name) || "")} — اكتب رمزك`) : "اكتب رمزك عشان تدخل";
   gate(`<h1>${esc(S.storeName || "SYS Minzo")}</h1><p class="sub">${sub}</p>${em ? `<p class="gnote" style="margin-top:-6px">${esc(S.mail && S.mail.email || "")} · جهاز شخصي</p>` : ""}
   <div class="pinrow" id="pinDots">${"<i></i>".repeat(4)}</div>
@@ -201,13 +202,40 @@ async function tryLogin(p) {
     if (r.error) { pinBuf = ""; if ($("#pinDots")) drawDots();
       const t = r.error === "WRONG_PIN" ? `الرمز غلط — فاضل ${r.left} محاولات قبل القفل.` : r.error === "LOCKED" ? `الجهاز مقفول لحد ${new Date(r.until).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}.` : errText(r.error);
       $("#pErr").textContent = t; return; }
-    S.sess = r; window.__mzTok = r.token; S.idle = Date.now(); S.dir = null; S.cash = null; S.tr = null; P.shift = undefined; setTimeout(qFlush, 1500);
-    if (r.staff.must_change) return changePin(true);
-    if (MODE === "email") S.mail = Object.assign(S.mail || {}, { status: "ready", name: r.staff.name });
-    if (MODE === "email" && r.staff.must_change_pw) return changePassword(true);
-    await enterApp();
+    await afterLogin(r);
   } catch (e) { $("#pErr").textContent = errText(e); pinBuf = ""; if ($("#pinDots")) drawDots(); }
   finally { S._logging = false; }
+}
+async function afterLogin(r) {
+  S.sess = r; window.__mzTok = r.token; S.idle = Date.now(); S.dir = null; S.cash = null; S.tr = null; P.shift = undefined; setTimeout(qFlush, 1500);
+  if (r.staff.must_change) return changePin(true);
+  if (MODE === "email") S.mail = Object.assign(S.mail || {}, { status: "ready", name: r.staff.name });
+  if (MODE === "email" && r.staff.must_change_pw) return changePassword(true);
+  await enterApp();
+}
+/* email device: the password alone opens the system (no PIN). Locked or reopened → type the password again */
+async function pwEnter(msg) {
+  const r = await rpc("email_password_login");
+  if (r.error === "NEED_PASSWORD") return mailLock(msg);
+  if (r.error === "NOT_LINKED") return emailFlow();
+  if (r.error) { await mailC.auth.signOut().catch(() => {}); MODE = "device"; return emailForm(errText(r.error)); }
+  await afterLogin(r);
+}
+function mailLock(msg) {
+  S.sess = null; window.__mzTok = null;
+  const em = (S.mail && S.mail.email) || "";
+  gate(`<h1>${esc(S.storeName || "SYS Minzo")}</h1><p class="sub">${esc((S.mail && S.mail.name) || "")} — اكتب الباسورد</p><p class="gnote" style="margin-top:-6px" dir="ltr">${esc(em)}</p>
+  <div class="stack"><input class="inp" id="lPw" type="password" autocomplete="current-password" dir="ltr" placeholder="الباسورد"><button class="btn gold" id="lGo">دخول</button><div class="gerr" id="pErr">${esc(msg || "")}</div>
+  <button class="btn ghost" id="mailOut">خروج من الإيميل</button></div>`);
+  $("#mailOut").onclick = mailSignOut;
+  const go = async () => { const password = $("#lPw").value; if (!password) return ($("#pErr").textContent = "اكتب الباسورد.");
+    if (S._logging) return; S._logging = true; busy($("#lGo"), true);
+    try { const { error } = await mailC.auth.signInWithPassword({ email: em, password });
+      if (error) { busy($("#lGo"), false); $("#lPw").value = ""; return ($("#pErr").textContent = errText(error)); }
+      S._logging = false; await pwEnter(); }
+    catch (e) { busy($("#lGo"), false); $("#pErr").textContent = errText(e); }
+    finally { S._logging = false; } };
+  $("#lGo").onclick = go; $("#lPw").onkeydown = e => { if (e.key === "Enter") go(); }; setTimeout(() => { const i = $("#lPw"); if (i) i.focus(); }, 50);
 }
 function changePin(forced) {
   const h = `<h1>${forced ? "اختار رمزك الخاص" : "تغيير الرمز"}</h1><p class="sub">${forced ? "الرمز ده مؤقت — لازم تختار رمز جديد قبل ما تكمّل." : ""}</p><div class="stack">
@@ -226,7 +254,7 @@ function changePin(forced) {
   };
   const c = root.querySelector("#cCancel"); if (c) c.onclick = closeModal;
 }
-function lockNow(msg) { if (T()) rpc("staff_logout", { p_token: T() }).catch(() => {}); S.sess = null; window.__mzTok = null; closeModal(); lockScreen(msg); }
+function lockNow(msg) { if (MODE === "email") rpc("email_lock").catch(() => {}); else if (T()) rpc("staff_logout", { p_token: T() }).catch(() => {}); S.sess = null; window.__mzTok = null; closeModal(); lockScreen(msg); }
 const lockMin = () => { const m = S.store && S.store.auto_lock_min; return m == null ? 10 : +m; };
 setInterval(() => { const m = lockMin(); if (S.sess && m > 0 && Date.now() - S.idle > m * 60 * 1000) lockNow(`اتقفل تلقائي بعد ${m} دقيقة من غير استخدام.`); }, 20000);
 
@@ -235,15 +263,16 @@ async function emailFlow(msg) {
   try {
     const { data: { session } } = await mailC.auth.getSession(); S.mail = { email: session && session.user && session.user.email };
     const r = await rpc("email_session"); Object.assign(S.mail, r);
-    if (r.status === "ready" || r.status === "link") { const st = await devC.rpc("setup_status").then(x => x.data).catch(() => null); if (st && st.store) S.storeName = st.store; return lockScreen(msg); }
+    if (r.status === "ready" || r.status === "link") { const st = await devC.rpc("setup_status").then(x => x.data).catch(() => null); if (st && st.store) S.storeName = st.store; return r.status === "ready" ? pwEnter(msg) : lockScreen(msg); }
     if (r.status === "pending") return gate(`<h1>حسابك مستني التفعيل</h1><p class="sub">الحساب ${esc(S.mail.email || "")} اتعمل. المالك أو المدير العام لازم يربطه باسمك ويفعّله من شاشة المستخدمين.</p><button class="btn gold" style="width:100%" id="mChk">اتفعّل؟ تحقق تاني</button><button class="btn ghost" style="width:100%;margin-top:10px" id="mOwn">أنا المالك أو المدير العام — اربط برمزي</button><button class="btn ghost" style="width:100%;margin-top:10px" id="mailOut">خروج</button>`), $("#mChk").onclick = () => emailFlow(), $("#mOwn").onclick = () => { S.mail.status = "link"; lockScreen(); }, $("#mailOut").onclick = mailSignOut;
     if (r.status === "disabled") return gate(`<h1>الدخول بالإيميل مقفول</h1><p class="sub">الدخول بالإيميل مقفول لحسابك. كلّم المالك أو المدير العام.</p><button class="btn ghost" style="width:100%" id="mailOut">خروج</button>`), $("#mailOut").onclick = mailSignOut;
-    await mailC.auth.signOut().catch(() => {}); MODE = "device"; return emailForm(r.status === "need_password" ? "ادخل بالإيميل والباسورد تاني." : "");
+    if (r.status === "need_password") return mailLock(msg);
+    await mailC.auth.signOut().catch(() => {}); MODE = "device"; return emailForm("");
   } catch (e) { gate(`<h1>SYS Minzo</h1><p class="sub">مش قادر يوصل للسيرفر</p><div class="gerr">${esc(errText(e))}</div><button class="btn gold" style="width:100%;margin-top:12px" id="retry">حاول تاني</button>`); $("#retry").onclick = boot; }
 }
 async function mailSignOut() { if (T()) await rpc("staff_logout", { p_token: T() }).catch(() => {}); S.sess = null; window.__mzTok = null; await mailC.auth.signOut().catch(() => {}); MODE = "device"; S.mail = null; boot(); }
 function emailForm(msg) {
-  gate(`<h1>دخول الإدارة بالإيميل</h1><p class="sub">من أي موبايل أو لابتوب. أول مرة بس بالإيميل والباسورد، وبعد كده برمزك.</p>
+  gate(`<h1>دخول الإدارة بالإيميل</h1><p class="sub">من أي موبايل أو لابتوب. بالإيميل والباسورد بس — من غير رمز.</p>
   <div class="stack"><div class="field"><label>الإيميل</label><input class="inp" id="mEmail" type="email" autocomplete="username" dir="ltr"></div>
   <div class="field"><label>الباسورد</label><input class="inp" id="mPw" type="password" autocomplete="current-password" dir="ltr"></div>
   <button class="btn gold" id="mGo">دخول</button><div class="gerr" id="mErr">${esc(msg || "")}</div>

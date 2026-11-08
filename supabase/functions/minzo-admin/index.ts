@@ -51,12 +51,25 @@ Deno.serve(async (req) => {
         const c = await check(b.staff_id);
         if (c.auth_user_id) return reply({ error: "ALREADY_LINKED" });
         if (!c.active) return reply({ error: "STAFF_INACTIVE" });
+        let uid: string, reused = false;
         const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name: c.staff_name } });
-        if (error) return reply({ error: /already|registered|exists/i.test(error.message) ? "EMAIL_TAKEN" : "AUTH_ERROR" });
-        const uid = data.user.id;
+        if (error) {
+          if (!/already|registered|exists/i.test(error.message)) return reply({ error: "AUTH_ERROR" });
+          // the email already has an account: reuse it only if it belongs to nobody (waiting, or unlinked earlier)
+          const { data: owner } = await asCaller.rpc("email_free_account", { p_token: String(b.token ?? ""), p_email: email });
+          if (!owner) return reply({ error: "EMAIL_TAKEN" });
+          uid = String(owner);
+          const { error: e3 } = await admin.auth.admin.updateUserById(uid, { password, email_confirm: true });
+          if (e3) return reply({ error: "AUTH_ERROR" });
+          reused = true;
+        } else uid = data.user.id;
         const { data: up, error: e2 } = await admin.from("staff").update({ auth_user_id: uid, email_login: true, pw_must_change: true, pw_reset_at: null })
           .eq("id", c.staff_id!).is("auth_user_id", null).select("id");
-        if (e2 || !up?.length) { await admin.auth.admin.deleteUser(uid); return reply({ error: "ALREADY_LINKED" }); }
+        if (e2 || !up?.length) { if (!reused) await admin.auth.admin.deleteUser(uid); return reply({ error: "ALREADY_LINKED" }); }
+        if (reused) {
+          await admin.from("pending_accounts").delete().eq("auth_user_id", uid);
+          await admin.from("email_pin_fails").delete().eq("auth_user_id", uid);
+        }
         await audit(c.actor, c.actor_name, "عمل حساب إيميل", c.staff_name!, email);
         return reply({ ok: true });
       }

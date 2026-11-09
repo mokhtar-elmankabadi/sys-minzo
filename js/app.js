@@ -368,10 +368,27 @@ function go(r) { if (!allowed(r)) return; S.route = r; ls("minzo-route", r); ren
    SCREENS
    ===================================================================== */
 const V = {}, H = {};
+/* the daily copy on Google Drive (owner only): read the last line of backup_log, at most every 10 minutes */
+function bkLast(route) {
+  if (S.sess.role.id !== "owner") return null;
+  const B = S.bkLast;
+  if ((!B || Date.now() - B.t > 600000) && !S._bkLoading) {
+    S._bkLoading = true;
+    q("backup_log", "at,bytes", x => x.eq("kind", "drive").order("at", { ascending: false }).limit(1))
+      .then(r => { S.bkLast = { at: r[0] ? r[0].at : null, bytes: r[0] ? +r[0].bytes : 0, t: Date.now() }; if (S.route === route) render(); })
+      .catch(() => {}).finally(() => { S._bkLoading = false; });
+  }
+  return B || null;
+}
+const bkSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+const bkWhen = x => new Date(x).toLocaleString("ar-EG", { dateStyle: "medium", timeStyle: "short" });
 V.dash = () => {
   const sc = seeCost(), byLoc = S.locs.map(l => { const rows = S.stock.filter(s => s.location_id === l.id); const val = rows.reduce((a, s) => { const it = S.items.find(i => i.id === s.item_id); return a + (+s.qty || 0) * (it ? +it.last_cost : 0); }, 0); return { l, n: rows.filter(r => +r.qty > 0).length, val }; });
   const low = S.items.filter(i => +i.min_qty > 0 && stockOf(i.id) <= +i.min_qty);
   let h = header();
+  const bk = bkLast("dash");
+  if (bk && (!bk.at || Date.now() - new Date(bk.at).getTime() > 36 * 3600e3))
+    h += `<div class="card rise" style="border-color:var(--bad);background:var(--badsoft)"><h3 style="color:var(--bad)">${bk.at ? "النسخة الاحتياطية على Google Drive متأخرة" : "لسه مفيش نسخة احتياطية على Google Drive"}</h3><p style="margin:0">${bk.at ? `آخر نسخة كانت ${esc(bkWhen(bk.at))} — يعني من أكتر من ٣٦ ساعة. اتأكد إن سكريبت «Minzo Backup» شغال وشوف إيميلك.` : "شغّل setup في سكريبت «Minzo Backup» على Google عشان النسخة اليومية تبدأ."}</p></div>`;
   h += `<div class="grid g4">${[["الأصناف", S.items.length], ["أصناف ليها رصيد", new Set(S.stock.filter(s => +s.qty > 0).map(s => s.item_id)).size], ["وصلت للحد الأدنى", low.length], [sc ? "قيمة المخزون (آخر تكلفة)" : "الأماكن", sc ? fmt(byLoc.reduce((a, x) => a + x.val, 0)) : S.locs.length]].map((k, i) => `<div class="card kpi rise ${i === 0 ? "lux" : ""}" style="--d:${i}"><div class="lbl">${k[0]}</div><div class="val">${k[1]}</div></div>`).join("")}</div>`;
   h += `<div class="grid g2"><div class="card rise"><h3>المخزون في كل مكان</h3><div class="tw"><table><thead><tr><th>المكان</th><th class="n">أصناف ليها رصيد</th>${sc ? `<th class="n">القيمة</th>` : ""}</tr></thead><tbody>${byLoc.map(x => `<tr><td>${esc(x.l.name)}</td><td class="n">${x.n}</td>${sc ? `<td class="n">${fmt(x.val)}</td>` : ""}</tr>`).join("")}</tbody></table></div></div>
   <div class="card rise"><h3>أصناف وصلت للحد الأدنى</h3>${low.length ? `<div class="tw"><table><tbody>${low.slice(0, 12).map(i => `<tr><td>${esc(i.name)}</td><td class="n">${num(stockOf(i.id))} / ${num(i.min_qty)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">مفيش أصناف تحت الحد الأدنى.</p>`}</div></div>`;
@@ -1163,6 +1180,9 @@ V.settings = () => { let h = header(); const st = S.store || {}, own = S.sess.ro
   h += `<div class="card rise"><h3>شعار المحل</h3><div class="row" style="gap:16px;flex-wrap:wrap;align-items:center"><div style="width:140px;height:90px;border:1px dashed var(--line2);border-radius:10px;display:grid;place-items:center;background:#fff;padding:6px">${LOGO() ? logoImg("78px") : `<span class="dim" style="font-size:12px">مفيش شعار</span>`}</div>
     <div class="stack" style="gap:8px"><div class="row" style="gap:8px"><label class="btn gold" for="stLogo" style="cursor:pointer">${LOGO() ? "تغيير الشعار" : "رفع الشعار"}</label><input type="file" id="stLogo" accept="image/png,image/jpeg,image/webp" hidden>${LOGO() ? `<button class="btn ghost" data-act="stLogoDel">إزالة</button>` : ""}</div>
     <span class="dim" style="font-size:12.5px">PNG بخلفية شفافة أحسن حاجة. الشعار بيظهر في القائمة، وشاشة الدخول، والإيصال، والفاتورة الضريبية، والتقرير النهائي.</span><div id="stLogoErr"></div></div></div></div>`;
+  if (own) { const bk = bkLast("settings"), late = bk && (!bk.at || Date.now() - new Date(bk.at).getTime() > 36 * 3600e3);
+    h += `<div class="card rise"><h3>آخر نسخة احتياطية</h3>${!bk ? `<div class="spin"></div>` : bk.at ? `<div class="row" style="gap:24px;flex-wrap:wrap"><div><div class="dim" style="font-size:12.5px">التاريخ</div><b class="num">${esc(bkWhen(bk.at))}</b></div><div><div class="dim" style="font-size:12.5px">الحجم</div><b class="num">${bkSize(bk.bytes)}</b></div></div>` : `<p style="margin:0">لسه مفيش نسخة على Google Drive.</p>`}
+      <p class="dim" style="font-size:12.5px;margin:8px 0 0">نسخة كل يوم الساعة ٦ الصبح على Google Drive وإيميلك (ملف Excel للقراءة + ملف للاسترجاع).${late ? ` <b style="color:var(--bad)">${bk.at ? "آخر نسخة عدّى عليها أكتر من ٣٦ ساعة." : ""}</b>` : ""}</p></div>`; }
   const al = st.auto_lock_min == null ? 10 : +st.auto_lock_min;
   h += `<div class="card rise"><h3>القفل التلقائي</h3><div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap"><div class="field" style="max-width:260px"><label>يتقفل بعد كام دقيقة من غير استخدام</label><input class="inp num" type="number" min="0" max="240" id="stLock" value="${al}"></div><button class="btn gold" data-act="stLockSave">حفظ</button></div>
     <p class="dim" style="font-size:12.5px;margin:8px 0 0">بيتطبق على كل الأجهزة، في المعارض والأجهزة الشخصية. ${al === 0 ? `<b style="color:var(--bad)">دلوقتي القفل التلقائي مقفول.</b>` : ""}</p><div id="stLockMsg"></div></div>`;

@@ -174,21 +174,47 @@ function rtNewModal() {
    ===================================================================== */
 async function loadCust() { const C = S.cu || (S.cu = { q: "" }); C.list = await rpc("customers_list", { p_token: T() }); C.loaded = true; }
 const tier = s => s >= 100000 ? ["بلاتيني", "gold"] : s >= 50000 ? ["ذهبي", "warn"] : s >= 20000 ? ["فضي", "info"] : ["عادي", "plain"];
+const cxOk = () => isTop() || has("custMsg");
+const cuSorts = { last: ["آخر زيارة", c => c.last || ""], invoices: ["عدد الفواتير", c => +c.invoices], spent: ["إجمالي المشتريات", c => +c.spent], points: ["النقاط", c => +c.points], name: ["الاسم", c => c.name] };
+function cuFiltered() {
+  const C = S.cu, qq = norm(C.q), f = C.f, now = Date.now();
+  let F = C.list.filter(c => (!qq || norm(c.name + " " + (c.phone || "") + " " + (c.area || "")).includes(qq))
+    && (!f.minInv || +c.invoices >= +f.minInv) && (!f.minSpent || +c.spent >= +f.minSpent)
+    && (!f.away || (c.last ? now - new Date(c.last).getTime() >= +f.away * 864e5 : +c.invoices === 0))
+    && (!f.phone || /^01\d{9}$/.test(String(c.phone || ""))));
+  const [, key] = cuSorts[C.sort] || cuSorts.last, dir = C.sort === "name" ? 1 : -1;
+  return F.slice().sort((x, y) => { const p = key(x), q2 = key(y); return (p > q2 ? 1 : p < q2 ? -1 : 0) * dir; });
+}
 V.customers = () => {
   const C = S.cu; if (!C || !C.loaded) return header() + later(loadCust, "customers");
-  const st = S.store || {}, L = C.list, qq = norm(C.q), F = L.filter(c => !qq || norm(c.name + " " + (c.phone || "") + " " + (c.area || "")).includes(qq));
+  C.tab = C.tab || "list"; C.sort = C.sort || "last"; C.f = C.f || {}; C.sel = C.sel || [];
+  const st = S.store || {}, L = C.list, cx = cxOk();
   const pts = L.reduce((a, c) => a + Math.max(0, +c.points), 0), rep = L.length ? Math.round(L.filter(c => +c.invoices > 1).length / L.length * 100) : 0;
   let h = header(`${isTop() ? `<button class="btn" data-act="cuLoy">إعدادات الولاء</button>` : ""}${can("customers", "x") || isTop() ? `<button class="btn" data-act="cuXls">Excel</button>` : ""}${can("customers", "a") ? `<button class="btn gold" data-act="cuNew">${ico("plus")} عميل جديد</button>` : ""}`);
+  if (cx) h += `<div class="tabs" style="margin-bottom:14px">${[["list", "العملاء"], ["groups", "المجموعات"], ["wa", "رسائل واتساب"]].map(([k, n]) => `<button data-act="cuTab" data-k="${k}" class="${C.tab === k ? "on" : ""}">${n}</button>`).join("")}</div>`;
+  if (cx && C.tab !== "list" && M.cx) return h + M.cx.view(C.tab);
   h += `<div class="grid g4"><div class="card kpi lux rise"><div class="lbl">عملاء متسجلين</div><div class="val">${num(L.length)}</div></div>
    <div class="card kpi rise" style="--d:1"><div class="lbl">نقاط ولاء قائمة</div><div class="val">${num(pts)}</div><div class="dim" style="font-size:12px">${st.loyalty_on ? `كل ${fmt(st.loyalty_per)} = نقطة · النقطة = ${fmt(st.loyalty_value, 1)} · القيمة ${fmt(pts * +st.loyalty_value)}` : "برنامج الولاء متوقف"}</div></div>
    <div class="card kpi rise" style="--d:2"><div class="lbl">ضمانات أجهزة سارية</div><div class="val">${num(L.reduce((a, c) => a + +c.warranties, 0))}</div><div class="dim" style="font-size:12px">مرتبطة بالمسلسل والعميل</div></div>
    <div class="card kpi rise" style="--d:3"><div class="lbl">عملاء متكررين</div><div class="val">${rep}%</div><div class="dim" style="font-size:12px">اشتروا أكتر من مرة</div></div></div>`;
   h += `<div class="card rise"><h3>البحث عن ضمان بالمسلسل</h3><div class="row" style="gap:8px"><input class="inp num" style="max-width:300px" id="snQ" placeholder="الرقم التسلسلي"><button class="btn gold" data-act="snLook">بحث</button></div><div id="snRes" style="margin-top:10px"></div></div>`;
-  h += `<div class="card rise"><input class="inp" id="cuQ" placeholder="بحث بالاسم أو الموبايل أو المنطقة" value="${esc(C.q)}" style="margin-bottom:10px">
-   <div class="tw"><table><thead><tr><th>العميل</th><th>الموبايل</th><th>الفئة</th><th class="n">الفواتير</th><th class="n">إجمالي المشتريات</th><th class="n">النقاط</th><th class="n">ضمانات</th><th>آخر زيارة</th></tr></thead><tbody>${F.slice(0, 400).map(c => { const tr = tier(+c.spent); return `<tr data-act="cuOpen" data-id="${c.id}" style="cursor:pointer"><td class="pname">${esc(c.name)}${c.area ? `<br><span class="dim" style="font-size:12px">${esc(c.area)}</span>` : ""}</td><td class="num">${esc(c.phone || "—")}</td><td>${chip(tr[0], tr[1])}</td><td class="n">${num(c.invoices)}</td><td class="n">${fmt(c.spent)}</td><td class="n" style="color:var(--gold)">${num(c.points)}</td><td class="n">${num(c.warranties)}</td><td class="muted">${c.last ? dt(c.last) : "—"}</td></tr>`; }).join("") || empty(8, L.length ? "مفيش نتيجة." : "لسه مفيش عملاء — العميل بيتسجّل لوحده لما الكاشير يكتب موبايله في الفاتورة.")}</tbody></table></div>${F.length > 400 ? `<p class="dim">ظاهر أول ٤٠٠ — دقّق البحث.</p>` : ""}</div>`;
+  const F = cuFiltered(), sel = new Set(C.sel), allSel = F.length > 0 && F.every(c => sel.has(c.id)), f = C.f;
+  h += `<div class="card rise"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+     <div class="field" style="flex:1;min-width:200px"><label>بحث</label><input class="inp" id="cuQ" placeholder="الاسم أو الموبايل أو المنطقة" value="${esc(C.q)}"></div>
+     <div class="field" style="min-width:150px"><label>الترتيب</label><select class="inp" id="cuSort">${Object.entries(cuSorts).map(([k, [n]]) => `<option value="${k}" ${C.sort === k ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+     <div class="field" style="width:110px"><label>فواتير على الأقل</label><input class="inp num" type="number" min="0" data-cf="minInv" value="${esc(f.minInv || "")}"></div>
+     <div class="field" style="width:130px"><label>مشتريات على الأقل</label><input class="inp num" type="number" min="0" data-cf="minSpent" value="${esc(f.minSpent || "")}"></div>
+     <div class="field" style="width:120px"><label>مجاش من (يوم)</label><input class="inp num" type="number" min="0" data-cf="away" value="${esc(f.away || "")}"></div>
+     ${cx ? `<label class="row" style="gap:6px;padding-bottom:10px"><input type="checkbox" data-cf="phone" ${f.phone ? "checked" : ""}> ليه موبايل</label>` : ""}
+     ${Object.values(f).some(Boolean) ? `<button class="btn sm ghost" data-act="cuClear" style="margin-bottom:6px">مسح الفلاتر</button>` : ""}</div>
+   ${cx && sel.size ? `<div class="okbox row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><b>${num(sel.size)} عميل مختار</b><button class="btn sm gold" data-act="cxToGroup">إضافة لمجموعة</button><button class="btn sm" data-act="cxWaSel">رسالة واتساب للمختارين</button><button class="btn sm ghost" data-act="cuSelNone">إلغاء الاختيار</button></div>` : ""}
+   <div class="tw"><table><thead><tr>${cx ? `<th style="width:28px"><input type="checkbox" data-act="cuSelAll" ${allSel ? "checked" : ""} title="اختيار الكل"></th>` : ""}<th class="n" style="width:36px">#</th><th>العميل</th><th>الموبايل</th><th>الفئة</th><th class="n">الفواتير</th><th class="n">إجمالي المشتريات</th><th class="n">النقاط</th><th class="n">ضمانات</th><th>آخر زيارة</th></tr></thead><tbody>${F.slice(0, 400).map((c, i) => { const tr = tier(+c.spent); return `<tr data-act="cuOpen" data-id="${c.id}" style="cursor:pointer">${cx ? `<td><input type="checkbox" data-act="cuSel" data-id="${c.id}" ${sel.has(c.id) ? "checked" : ""}></td>` : ""}<td class="n dim">${i + 1}</td><td class="pname">${esc(c.name)}${c.area ? `<br><span class="dim" style="font-size:12px">${esc(c.area)}</span>` : ""}</td><td class="num">${esc(c.phone || "—")}</td><td>${chip(tr[0], tr[1])}</td><td class="n">${num(c.invoices)}</td><td class="n">${fmt(c.spent)}</td><td class="n" style="color:var(--gold)">${num(c.points)}</td><td class="n">${num(c.warranties)}</td><td class="muted">${c.last ? dt(c.last) : "—"}</td></tr>`; }).join("") || empty(cx ? 10 : 9, L.length ? "مفيش نتيجة." : "لسه مفيش عملاء — العميل بيتسجّل لوحده لما الكاشير يكتب موبايله في الفاتورة.")}</tbody></table></div>${F.length > 400 ? `<p class="dim">ظاهر أول ٤٠٠ من ${num(F.length)} — دقّق البحث.</p>` : `<p class="dim" style="margin-bottom:0">${num(F.length)} عميل</p>`}</div>`;
   return h;
 };
 H.customers = () => { const qi = $("#cuQ"); if (qi) qi.oninput = () => { S.cu.q = qi.value; const p = qi.selectionStart; render(); const n = $("#cuQ"); n.focus(); n.setSelectionRange(p, p); };
+  const so = $("#cuSort"); if (so) so.onchange = () => { S.cu.sort = so.value; render(); };
+  document.querySelectorAll("[data-cf]").forEach(x => { x.onchange = () => { S.cu.f[x.dataset.cf] = x.type === "checkbox" ? x.checked : x.value; render(); }; });
+  if (M.cx && M.cx.bind) M.cx.bind();
   const sn = $("#snQ"); if (sn) sn.onkeydown = e => { if (e.key === "Enter") document.querySelector("[data-act=snLook]").click(); }; };
 function cuEditModal(c) {
   const x = c || { name: "", phone: "", area: "", address: "", notes: "" };
@@ -204,7 +230,7 @@ async function cuOpen(id) {
      <div class="grid g3"><div class="card kpi"><div class="lbl">المشتريات</div><div class="val">${fmt(hs.spent)}</div></div><div class="card kpi"><div class="lbl">النقاط</div><div class="val" style="color:var(--gold)">${num(hs.points)}</div><div class="dim" style="font-size:12px">= ${fmt(hs.points * +st.loyalty_value, 1)}</div></div><div class="card kpi"><div class="lbl">الفواتير</div><div class="val">${num(hs.sales.filter(s => s.status === "posted").length)}</div></div></div>
      <div class="row" style="gap:8px;margin:10px 0;flex-wrap:wrap">${can("customers", "e") ? `<button class="btn sm" data-act="cuEdit" data-id="${id}">تعديل البيانات</button><button class="btn sm" data-act="cuPts" data-id="${id}" data-k="redeem">استبدال نقاط</button>` : ""}${isTop() ? `<button class="btn sm ghost" data-act="cuPts" data-id="${id}" data-k="adjust">تسوية نقاط</button>` : ""}${c.phone ? `<a class="btn sm ghost" href="https://wa.me/${esc(wa)}" target="_blank" rel="noopener">واتساب</a>` : ""}</div>
      ${hs.serials.length ? `<h3>الأجهزة والضمان</h3><div class="tw"><table><tbody>${hs.serials.map(s => `<tr><td>${esc(s.item)}<br><span class="dim num" style="font-size:12px">SN ${esc(s.serial)}</span></td><td class="num dim">${dd(s.sold)}</td><td>${+s.months ? (s.until >= today() ? chip("ساري لحد " + s.until, "ok") : chip("انتهى " + s.until, "bad")) : chip("من غير ضمان")}</td></tr>`).join("")}</tbody></table></div>` : ""}
-     <h3>الفواتير</h3><div class="tw" style="max-height:220px;overflow:auto"><table><tbody>${hs.sales.map(s => `<tr><td class="num">${esc(s.no)}</td><td class="dim">${esc(locName(s.loc))} · ${dt(s.at)}</td><td class="n">${fmt(s.total, 1)}</td><td>${s.status === "void" ? chip("ملغاة", "bad") : ""}</td></tr>`).join("") || empty(4, "مفيش فواتير.")}</tbody></table></div>
+     <h3>الفواتير <span class="dim" style="font-size:12px;font-weight:400">اضغط على الفاتورة لتفاصيلها</span></h3><div class="tw" style="max-height:260px;overflow:auto"><table><tbody>${hs.sales.map(s => `<tr data-act="cuSale" data-id="${s.id}" data-c="${id}" style="cursor:pointer" title="تفاصيل الفاتورة"><td class="num">${esc(s.no)}</td><td class="dim">${esc(locName(s.loc))} · ${dt(s.at)}</td><td class="n">${fmt(s.total, 1)}</td><td>${s.status === "void" ? chip("ملغاة", "bad") : ""}</td></tr>`).join("") || empty(4, "مفيش فواتير.")}</tbody></table></div>
      ${hs.loyalty.length ? `<h3>حركات النقاط</h3><div class="tw"><table><tbody>${hs.loyalty.map(l => `<tr><td class="num dim">${dt(l.at)}</td><td>${l.kind === "redeem" ? "استبدال" : "تسوية"} · ${esc(l.note)}</td><td class="n" style="color:${l.points < 0 ? "var(--bad)" : "var(--ok)"}">${l.points > 0 ? "+" : ""}${num(l.points)}</td></tr>`).join("")}</tbody></table></div>` : ""}
      ${c.notes ? `<p class="dim">${esc(c.notes)}</p>` : ""}<div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn ghost" data-act="mClose">قفل</button></div>`);
   } catch (e) { toast(errText(e), true); }
@@ -311,12 +337,12 @@ V.print = () => {
   if (P.tab === "rtpl") {
     const r = Object.assign({ size: "80", logo: true, name: true, savings: true, qr: true, addr: "", phone: "", footer: "" }, S.store.receipt || {}), ed = setup() ? "" : "disabled", w = { "58": 220, "80": 300, "A5": 420, "A4": 520 }[r.size] || 300;
     h += `<div class="grid g2"><div class="card rise"><h3>قالب الإيصال</h3><div class="stack"><div class="field"><label>مقاس الورق</label><select class="inp" id="rtS" ${ed}>${["58", "80", "A5", "A4"].map(s => `<option value="${s}" ${r.size === s ? "selected" : ""}>${/\d/.test(s[0]) ? s + " مم" : s}</option>`).join("")}</select></div>
-      ${[["logo", "الشعار" + (M.LOGO() ? "" : " (ارفعه من الإعدادات والضريبة)")], ["name", "اسم المحل"], ["savings", "سطر «وفّرت»"], ["qr", "QR للفاتورة"]].map(([k, n]) => `<label class="row" style="gap:8px"><input type="checkbox" data-rt="${k}" ${r[k] !== false ? "checked" : ""} ${ed}> ${n}</label>`).join("")}
+      ${[["logo", "الشعار" + (M.LOGO() ? "" : " (ارفعه من الإعدادات والضريبة)")], ["name", "اسم المحل"], ["savings", "سطر «وفّرت»"], ["qr", "QR صفحة المحل (اللينكات من الإعدادات)"]].map(([k, n]) => `<label class="row" style="gap:8px"><input type="checkbox" data-rt="${k}" ${r[k] !== false ? "checked" : ""} ${ed}> ${n}</label>`).join("")}
       ${[["addr", "العنوان"], ["phone", "التليفون"], ["footer", "نص أسفل الفاتورة"]].map(([k, n]) => `<div class="field"><label>${n}</label><input class="inp" data-rt="${k}" value="${esc(r[k] || "")}" ${ed}></div>`).join("")}
       ${setup() ? `<button class="btn gold" data-act="rtSave" style="align-self:flex-start">حفظ القالب</button>` : ""}<div id="rtErr"></div></div></div>
      <div class="card rise"><h3>المعاينة</h3><div class="receipt" style="width:${w}px;max-width:100%;margin:0 auto;background:#fff;color:#111;padding:12px;border-radius:6px;font-size:12px">${r.logo !== false && M.LOGO() ? `<div style="text-align:center;margin-bottom:4px">${M.logoImg("54px", "max-width:160px")}</div>` : ""}${r.name !== false ? `<div style="text-align:center;font-weight:700;font-size:15px">${esc(S.store.name)}</div>` : ""}${r.addr || r.phone ? `<div style="text-align:center;color:#555">${esc([r.addr, r.phone].filter(Boolean).join(" · "))}</div>` : ""}<div style="text-align:center;color:#555">INV-000123 · ${new Date().toLocaleDateString("ar-EG")}</div><div style="border-top:1px dashed #000;margin:6px 0"></div>
       <div class="row between"><span>طقم حلل جرانيت × 1</span><span>4,200</span></div><div class="row between"><span>فوطة × 3</span><span>2,250</span></div><div class="row between"><span>خصم العروض</span><span>−630</span></div><div style="border-top:1px dashed #000;margin:6px 0"></div><div class="row between"><b>الإجمالي</b><b>5,820 ج.م</b></div>
-      ${r.savings !== false ? `<div style="text-align:center;margin-top:6px">وفّرت 630 ج.م</div>` : ""}${r.qr !== false ? `<div style="width:90px;height:90px;margin:8px auto 0">${qrSVG("INV-000123|" + today())}</div>` : ""}${r.footer ? `<div style="text-align:center;margin-top:6px;color:#555">${esc(r.footer)}</div>` : ""}</div></div></div>`;
+      ${r.savings !== false ? `<div style="text-align:center;margin-top:6px">وفّرت 630 ج.م</div>` : ""}${M.cx ? M.cx.rcptExtra(1, "أحمد", true) : ""}${r.footer ? `<div style="text-align:center;margin-top:6px;color:#555">${esc(r.footer)}</div>` : ""}</div></div></div>`;
   }
   if (P.tab === "lbl") {
     const Lb = P.lbl, ed = lblRight(), it = S.items.find(i => i.id === P.pid) || sample();
@@ -448,6 +474,12 @@ window.MZX = async function (k, a) {
   else if (k === "cuNew") cuEditModal(null);
   else if (k === "cuEdit") cuEditModal(S.cu.list.find(c => c.id === id));
   else if (k === "cuOpen") cuOpen(id);
+  else if (k === "cuTab") { S.cu.tab = a.dataset.k; render(); }
+  else if (k === "cuSort") { S.cu.sort = a.dataset.k; render(); }
+  else if (k === "cuClear") { S.cu.f = {}; render(); }
+  else if (k === "cuSel") { const set = new Set(S.cu.sel); a.checked ? set.add(id) : set.delete(id); S.cu.sel = [...set]; render(); }
+  else if (k === "cuSelAll") { const set = new Set(S.cu.sel), F = cuFiltered(); if (a.checked) F.forEach(c => set.add(c.id)); else F.forEach(c => set.delete(c.id)); S.cu.sel = [...set]; render(); }
+  else if (k === "cuSelNone") { S.cu.sel = []; render(); }
   else if (k === "cuSave") { const p = { id: id || null, name: $("#cN").value, phone: $("#cP").value, area: $("#cA").value, address: $("#cD").value, notes: $("#cO").value };
     if (p.phone && !/^01\d{9}$/.test(p.phone.trim())) { errBox("#cErr", "رقم الموبايل غلط."); return true; }
     wrap(() => rpc("customer_save", { p_token: T(), p }), async () => { closeModal(); toast("اتحفظ."); S.cu.loaded = false; render(); }, "#cErr"); }

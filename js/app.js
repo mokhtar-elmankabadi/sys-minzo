@@ -24,6 +24,7 @@ const KINDS = { admin: "إدارة", cashier: "كاشير", warehouse: "جهاز
 
 /* ---------- server error codes → Arabic ---------- */
 const ERR = {
+  OFFER_RETURN_BLOCKED: "المرتجع ده من عرض على مجموعة: لو رجع القطعة دي لوحدها الخصم هيتلغي على الباقي والعميل هيبقى عليه فلوس. خلّيه يرجّع العرض كله أو يبدّل القطعة بقطعة تانية.", BAD_LINK: "فيه لينك مش مظبوط — اتأكد إنه بيبدأ بـ https:// والأرقام صح.", NO_RECIPIENTS: "مفيش عملاء ليهم موبايل في الاختيار ده.", MESSAGE_REQUIRED: "اكتب الرسالة.", NAME_TAKEN: "الاسم ده مستخدم قبل كده.",
   WRONG_PIN: "الرمز غلط.", USE_EMAIL: "الجهاز ده جهاز شخصي — ادخل بالإيميل والباسورد.", NEED_PASSWORD: "ادخل بالإيميل والباسورد تاني.", EMAIL_DISABLED: "الدخول بالإيميل مقفول لحسابك — كلّم المالك.", PENDING: "حسابك لسه مستني المالك يفعّله.",
   BAD_EMAIL: "الإيميل مش مظبوط.", WEAK_PASSWORD: "الباسورد لازم يكون 8 حروف أو أكتر.", EMAIL_TAKEN: "الإيميل ده عليه حساب قبل كده.", ALREADY_LINKED: "الموظف ده مربوط بإيميل خلاص.", NOT_LINKED: "الموظف ده مش مربوط بإيميل.",
   STAFF_INACTIVE: "الموظف موقوف.", TOO_MANY: "طلبات كتير — جرّب بعد ساعة.", AUTH_ERROR: "حصلت مشكلة في عمل الحساب — جرّب تاني.", NAME_REQUIRED: "اكتب الاسم.", BAD_VALUE: "القيمة مش مظبوطة.",
@@ -622,7 +623,7 @@ function cartCalc() {
   const st = S.store || {}, vatOn = st.vat_registered && st.vat_from && today() >= st.vat_from, O = P.ofrSig === cartSig() && P.ofr && !P.ofr.error ? P.ofr : null;
   let gross = 0, odisc = 0, mdisc = 0, vat = 0;
   P.cart.forEach((l, n) => { const it = S.items.find(i => i.id === l.id); l.it = it; const g = it.sale_price * l.qty, ol = O && O.lines && O.lines[n], od = ol ? +ol.d || 0 : 0, md = Math.round((g - od) * P.disc) / 100;
-    l.od = od; l.on = od > 0 ? ol.n : ""; l.net = g - od - md; gross += g; odisc += od; mdisc += md; });
+    l.od = od; l.on = ol && ol.n ? ol.n : ""; l.net = g - od - md; gross += g; odisc += od; mdisc += md; });
   odisc = Math.round(odisc * 100) / 100; mdisc = Math.round(mdisc * 100) / 100;
   const disc = odisc + mdisc; let total = gross - disc;
   if (vatOn) { P.cart.forEach(l => { const r = (l.it.vat_rate != null ? +l.it.vat_rate : +st.vat_rate) / 100, sh = l.net; vat += st.prices_include_vat ? sh - sh / (1 + r) : sh * r; }); vat = Math.round(vat * 100) / 100; if (!st.prices_include_vat) total += vat; }
@@ -712,15 +713,31 @@ async function posPay(btn) {
     else { err(errText(e)); busy(btn, false); }
   }
 }
-function posDone(r, c) {
+/* receipt lines: items of the same offer sit together in a box with the offer name, its discount and the offer price,
+   so a later return is easy to recognise */
+function rcptLines(lines, offers) {
+  const one = x => `<div class="r"><span>${esc(x.n)} × ${num(x.q)}${x.sn ? `<br><span class="dim">SN ${esc(x.sn)}</span>` : ""}</span><span>${fmt(x.p * x.q, 1)}</span></div>`;
+  if (!offers) return lines.map(one).join("");
+  const groups = {}, order = [];
+  lines.forEach(x => { const k = x.on || ""; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(x); });
+  return order.map(k => { const g = groups[k]; if (!k) return g.map(one).join("");
+    const od = g.reduce((a, x) => a + (+x.od || 0), 0), gross = g.reduce((a, x) => a + x.p * x.q, 0);
+    return `<div style="border:1.5px solid #000;border-radius:5px;padding:4px 6px;margin:5px 0"><div style="font-weight:700;font-size:11.5px;margin-bottom:2px">★ عرض: ${esc(k)}</div>${g.map(one).join("")}${od > 0 ? `<div class="r"><span>خصم العرض</span><span>−${fmt(od, 1)}</span></div>` : ""}<div class="r" style="border-top:1px dotted #000;padding-top:2px"><b>سعر العرض</b><b>${fmt(gross - od, 1)}</b></div></div>`; }).join("");
+}
+async function posDone(r, c) {
   const lines = P.cart.map(l => ({ n: l.it.name, q: l.qty, u: UNITS[l.it.unit], p: l.it.sale_price, sn: l.serial, od: l.od, on: l.on }));
   const pays = Object.entries(P.pay).filter(([, v]) => +v > 0); P.planDone = P.plan;
+  const custName = P.cust.phone ? P.cust.name.trim() : "", hasCust = !!P.cust.phone;
   P.cart = []; P.disc = 0; P.pin = ""; P.cust = { name: "", phone: "" }; P.seller = ""; P.plan = ""; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" };
+  // which visit is this for the customer → the welcome line on the receipt (never holds the receipt more than 2.5 s)
+  let visit = null;
+  if (hasCust && !r.offline && r.id) visit = await Promise.race([rpc("sale_visit", { p_token: T(), p_sale: r.id }).catch(() => null), new Promise(res => setTimeout(() => res(null), 2500))]);
+  const extra = window.MZ.cx ? window.MZ.cx.rcptExtra(visit, custName) : "";
   modal(`<h2>${r.offline ? "اتحفظت على الجهاز" : "تم البيع"}</h2>${r.offline ? `<div class="warnbox">مفيش نت — الفاتورة اتحفظت على الجهاز وهتتبعت لوحدها أول ما النت يرجع.</div>` : ""}
    <div class="receipt" id="rcpt">${RC().logo !== false && LOGO() ? `<div style="text-align:center;margin-bottom:4px">${logoImg("16mm", "max-width:44mm")}</div>` : ""}${RC().name !== false ? `<div style="text-align:center;font-family:var(--f-display);font-size:16px">${esc(S.store.name)}</div>` : ""}${RC().addr || RC().phone ? `<div style="text-align:center" class="dim">${esc([RC().addr, RC().phone].filter(Boolean).join(" · "))}</div>` : ""}<div style="text-align:center" class="dim">${esc(locName(S.sess.device.location_id))} · ${new Date().toLocaleString("ar-EG")}</div><div style="text-align:center" class="num">${esc(r.no)}</div><div class="hr" style="margin:8px 0"></div>
-   ${lines.map(x => `<div class="r"><span>${esc(x.n)} × ${num(x.q)}${x.sn ? `<br><span class="dim">SN ${esc(x.sn)}</span>` : ""}${x.od > 0 ? `<br><span class="dim">${esc(x.on)} −${fmt(x.od, 1)}</span>` : ""}</span><span>${fmt(x.p * x.q, 1)}</span></div>`).join("")}
-   ${c.odisc && !r.offline ? `<div class="r"><span>خصم العروض</span><span>−${fmt(c.odisc, 1)}</span></div>` : ""}${c.mdisc ? `<div class="r"><span>خصم</span><span>−${fmt(c.mdisc, 1)}</span></div>` : ""}${c.vatOn ? `<div class="r"><span>ض.ق.م</span><span>${fmt(r.vat != null ? r.vat : c.vat, 1)}</span></div>` : ""}
-   <div class="hr" style="margin:8px 0"></div><div class="r"><b>الإجمالي</b><b>${fmt(r.total, 1)}</b></div>${pays.map(([k, v]) => `<div class="r"><span>${k === "inst" ? "تقسيط · " + esc(planName(P.planDone)) : k === "points" ? "نقاط ولاء" : PAYN[k]}</span><span>${fmt(v, 1)}</span></div>`).join("")}${(r.change || 0) > 0 ? `<div class="r"><span>الباقي</span><span>${fmt(r.change, 1)}</span></div>` : ""}${RC().savings !== false && (c.odisc + c.mdisc) > 0 && !r.offline ? `<div style="text-align:center;margin-top:6px">وفّرت ${fmt(c.odisc + c.mdisc, 1)}</div>` : ""}${RC().qr !== false && window.MZQR && !r.offline ? `<div style="width:26mm;height:26mm;margin:8px auto 0">${window.MZQR(r.no + "|" + today() + "|" + r.total)}</div>` : ""}${RC().footer ? `<div style="text-align:center;margin-top:6px" class="dim">${esc(RC().footer)}</div>` : ""}</div>
+   ${rcptLines(lines, !r.offline)}
+   ${c.mdisc ? `<div class="r"><span>خصم</span><span>−${fmt(c.mdisc, 1)}</span></div>` : ""}${c.vatOn ? `<div class="r"><span>ض.ق.م</span><span>${fmt(r.vat != null ? r.vat : c.vat, 1)}</span></div>` : ""}
+   <div class="hr" style="margin:8px 0"></div><div class="r"><b>الإجمالي</b><b>${fmt(r.total, 1)}</b></div>${pays.map(([k, v]) => `<div class="r"><span>${k === "inst" ? "تقسيط · " + esc(planName(P.planDone)) : k === "points" ? "نقاط ولاء" : PAYN[k]}</span><span>${fmt(v, 1)}</span></div>`).join("")}${(r.change || 0) > 0 ? `<div class="r"><span>الباقي</span><span>${fmt(r.change, 1)}</span></div>` : ""}${RC().savings !== false && (c.odisc + c.mdisc) > 0 && !r.offline ? `<div style="text-align:center;margin-top:6px">وفّرت ${fmt(c.odisc + c.mdisc, 1)}</div>` : ""}${extra}${RC().footer ? `<div style="text-align:center;margin-top:6px" class="dim">${esc(RC().footer)}</div>` : ""}</div>
    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">${!r.offline && r.id && can("delivery", "a") ? `<button class="btn ghost" data-act="dlvFromSale" data-id="${r.id}">${ico("delivery")} طلب توصيل</button>` : ""}<button class="btn" data-act="rcptPrint">طباعة</button><button class="btn gold" data-act="rcptOk">فاتورة جديدة</button></div>`);
   if (window.MZPA && MZPA.auto() && MZPA.can("sale") && $("#rcpt")) MZPA.receipt($("#rcpt").innerHTML).catch(() => toast("الإيصال ما اتطبعش لوحده — دوس «طباعة».", true));
   loadItems().then(() => { P.shift = undefined; }).catch(() => {});
@@ -868,22 +885,41 @@ async function heldTake(id) {
 async function returnModal(saleId) {
   try { const [sale, lines] = await Promise.all([q("sales", "*", x => x.eq("id", saleId)), q("sale_lines", "*", x => x.eq("sale_id", saleId))]);
     const done = await q("return_lines", "sale_line_id,qty,returns!inner(sale_id)", x => x.eq("returns.sale_id", saleId)).catch(() => []);
+    const oids = [...new Set(lines.map(l => l.offer_id).filter(Boolean))];
+    const [ofs, voids] = await Promise.all([oids.length ? q("offers", "id,name,kind,scope", x => x.in("id", oids)).catch(() => []) : [], q("offer_voids", "sale_line_id", x => x.in("sale_line_id", lines.map(l => l.id))).catch(() => [])]);
+    const ofOf = id => ofs.find(o => o.id === id), isVoid = id => voids.some(v => v.sale_line_id === id), ratio = +s0(sale).gross - +s0(sale).discount > 0 ? +s0(sale).total / (+s0(sale).gross - +s0(sale).discount) : 1;
     const s = sale[0], dq = id => done.filter(d => d.sale_line_id === id).reduce((a, d) => a + +d.qty, 0), approve = can("returns", "p");
     S._ret = { sale: s, lines };
     modal(`<h2>مرتجع على ${esc(s.no)}</h2><p class="muted" style="margin:0 0 10px">${new Date(s.created_at).toLocaleString("ar-EG")} · ${fmt(s.total, 1)}</p><div class="stack">
-     ${lines.map(l => { const it = S.items.find(i => i.id === l.item_id) || { name: "—", unit: "piece" }, left = +l.qty - dq(l.id); return `<div class="card" style="padding:10px"><div class="row between"><b>${esc(it.name)}</b><span class="dim num">اتباع ${num(l.qty)} · رجع قبل كده ${num(dq(l.id))}</span></div>${l.serial ? `<div class="dim num" style="font-size:12px">SN ${esc(l.serial)}</div>` : ""}
+     ${lines.map(l => { const it = S.items.find(i => i.id === l.item_id) || { name: "—", unit: "piece" }, left = +l.qty - dq(l.id); const o = l.offer_id && ofOf(l.offer_id), grp = o && (["bxgy", "bundle", "gift"].includes(o.kind) || o.scope === "invoice"), unit = (+l.unit_price * +l.qty - +l.discount) / +l.qty * ratio;
+       return `<div class="card" style="padding:10px;${o ? "border:1.5px solid var(--gold)" : ""}"><div class="row between"><b>${esc(it.name)}</b><span class="dim num">اتباع ${num(l.qty)} · رجع قبل كده ${num(dq(l.id))}</span></div>${l.serial ? `<div class="dim num" style="font-size:12px">SN ${esc(l.serial)}</div>` : ""}
+       ${o ? `<div style="margin-top:4px"><span class="chip warn">★ ضمن عرض: ${esc(o.name)}</span> <span class="dim" style="font-size:12.5px">${isVoid(l.id) ? "العرض اتلغى في مرتجع قبل كده — بيرجع بسعره العادي" : `سعره في العرض ${fmt(unit, 1)} للوحدة${grp ? " · عرض على مجموعة: لو رجع جزء منه الخصم بيتلغي على الباقي" : ""}`}</span></div>` : ""}
        ${left > 0 ? `<div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap"><label class="row" style="gap:6px">الكمية <input class="inp num" type="number" min="0" max="${left}" step="${it.unit === "meter" ? "0.1" : "1"}" data-rq="${l.id}" value="0" style="width:80px"></label><select class="inp" data-rc="${l.id}" style="flex:1"><option value="resell">سليم — يرجع للبيع</option><option value="damaged">تالف — ما يرجعش للمخزون</option></select></div>` : `<div class="dim">رجع بالكامل</div>`}</div>`; }).join("")}
      <div class="grid g2"><div class="field"><label>طريقة رد الفلوس</label><select class="inp" id="rRef">${Object.entries(PAYN).map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}<option value="credit">من غير رد فلوس (استبدال)</option></select></div><div class="field"><label>السبب</label><input class="inp" id="rWhy"></div></div>
-     ${approve ? "" : `<div class="field"><label>رمز المدير للموافقة</label><input class="inp num" type="password" id="rPin"></div>`}<div id="rErr"></div>
-     <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">رجوع</button><button class="btn gold" data-act="retGo" data-id="${s.id}">تسجيل المرتجع</button></div></div>`); }
+     <div id="rPrev"></div>${approve ? "" : `<div class="field"><label>رمز المدير للموافقة</label><input class="inp num" type="password" id="rPin"></div>`}<div id="rErr"></div>
+     <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">رجوع</button><button class="btn gold" data-act="retGo" data-id="${s.id}">تسجيل المرتجع</button></div></div>`);
+    document.querySelectorAll("[data-rq],[data-rc]").forEach(x => { x.oninput = x.onchange = () => retPreview(s.id); }); }
   catch (e) { toast(errText(e), true); }
+}
+const s0 = a => a[0] || {};
+const retPick = () => [...document.querySelectorAll("[data-rq]")].map(x => ({ sale_line_id: +x.dataset.rq, qty: +x.value || 0, condition: document.querySelector(`[data-rc="${x.dataset.rq}"]`).value })).filter(l => l.qty > 0);
+/* what the customer gets back, before posting (offer on a group → its discount comes off the refund) */
+async function retPreview(saleId) {
+  const box = $("#rPrev"), go = document.querySelector("[data-act=retGo]"), lines = retPick(), tag = (S._retTag = (S._retTag || 0) + 1);
+  if (!box) return; if (!lines.length) { box.innerHTML = ""; if (go) go.disabled = false; return; }
+  try { const r = await rpc("return_preview", { p_token: T(), p_sale: saleId, p_lines: lines }); if (tag !== S._retTag || !$("#rPrev")) return;
+    const back = +r.offer_back;
+    box.innerHTML = `<div class="${r.blocked ? "warnbox" : "okbox"}" style="margin:0">${back > 0 ? `<div class="row between"><span>قيمة الأصناف بسعر العرض</span><b class="num">${fmt(r.amount, 1)}</b></div>${(r.offers || []).filter(o => +o.back > 0).map(o => `<div class="row between"><span>اتلغى خصم عرض «${esc(o.name)}» على الباقي</span><b class="num">−${fmt(o.back, 1)}</b></div>`).join("")}` : ""}
+      <div class="row between"><b>${r.blocked ? "العميل هيبقى عليه" : "هيرجع للعميل"}</b><b class="num">${fmt(Math.abs(+r.net), 1)}</b></div>${r.blocked ? `<div style="margin-top:6px">${esc(ERR.OFFER_RETURN_BLOCKED)}</div>` : ""}</div>`;
+    if (go) go.disabled = !!r.blocked; }
+  catch (e) { if (tag === S._retTag && $("#rPrev")) box.innerHTML = `<div class="warnbox">${esc(errText(e))}</div>`; }
 }
 async function retGo(btn, saleId) {
   const lines = [...document.querySelectorAll("[data-rq]")].map(x => ({ sale_line_id: +x.dataset.rq, qty: +x.value || 0, condition: document.querySelector(`[data-rc="${x.dataset.rq}"]`).value })).filter(l => l.qty > 0);
   if (!lines.length) return ($("#rErr").innerHTML = `<div class="warnbox">اكتب كمية المرتجع.</div>`);
   busy(btn, true);
   try { const r = await rpc("return_post", { p_token: T(), p_sale: saleId, p_lines: lines, p_reason: $("#rWhy").value.trim(), p_refund: $("#rRef").value, p_approver_pin: ($("#rPin") || {}).value || null });
-    closeModal(); toast(`اتسجّل المرتجع ${r.no} بقيمة ${fmt(r.amount, 1)}.`); S.cash = null; await loadItems(); render(); }
+    closeModal(); toast(`اتسجّل المرتجع ${r.no} بقيمة ${fmt(r.amount, 1)}${+r.offer_back > 0 ? ` (بعد إلغاء خصم عرض ${fmt(r.offer_back, 1)})` : ""}.`); S.cash = null; await loadItems(); render(); }
   catch (e) { $("#rErr").innerHTML = `<div class="warnbox">${esc(errText(e))}</div>`; busy(btn, false); }
 }
 

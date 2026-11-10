@@ -24,6 +24,7 @@ const KINDS = { admin: "إدارة", cashier: "كاشير", warehouse: "جهاز
 
 /* ---------- server error codes → Arabic ---------- */
 const ERR = {
+  CODE_TAKEN: "الكود ده مستخدم على صنف تاني", KIT_SERIAL: "الأصناف اللي بمسلسل ما تدخلش في طقم.", KIT_IS_PART: "الصنف ده قطعة في طقم تاني — مينفعش يبقى طقم.", KIT_SELF: "الطقم مينفعش يكون قطعة في نفسه.", KIT_NESTED: "مينفعش تحط طقم جوه طقم", KIT_NO_PARTS: "الطقم ده مالوش قطع.", SAME_ITEM: "اختار صنف غير الصنف القديم.", OFFER_ALREADY_CANCELLED: "العرض على الصنف ده اتلغى في مرتجع قبل كده — اعمل مرتجع عادي.",
   OFFER_RETURN_BLOCKED: "المرتجع ده من عرض على مجموعة: لو رجع القطعة دي لوحدها الخصم هيتلغي على الباقي والعميل هيبقى عليه فلوس. خلّيه يرجّع العرض كله أو يبدّل القطعة بقطعة تانية.", BAD_LINK: "فيه لينك مش مظبوط — اتأكد إنه بيبدأ بـ https:// والأرقام صح.", NO_RECIPIENTS: "مفيش عملاء ليهم موبايل في الاختيار ده.", MESSAGE_REQUIRED: "اكتب الرسالة.", NAME_TAKEN: "الاسم ده مستخدم قبل كده.",
   WRONG_PIN: "الرمز غلط.", USE_EMAIL: "الجهاز ده جهاز شخصي — ادخل بالإيميل والباسورد.", NEED_PASSWORD: "ادخل بالإيميل والباسورد تاني.", EMAIL_DISABLED: "الدخول بالإيميل مقفول لحسابك — كلّم المالك.", PENDING: "حسابك لسه مستني المالك يفعّله.",
   BAD_EMAIL: "الإيميل مش مظبوط.", WEAK_PASSWORD: "الباسورد لازم يكون 8 حروف أو أكتر.", EMAIL_TAKEN: "الإيميل ده عليه حساب قبل كده.", ALREADY_LINKED: "الموظف ده مربوط بإيميل خلاص.", NOT_LINKED: "الموظف ده مش مربوط بإيميل.",
@@ -327,10 +328,21 @@ async function loadCore() {
   gateLogo = (S.store && S.store.logo_url) || ""; try { if (gateLogo) localStorage.setItem("mz.logo", gateLogo); else localStorage.removeItem("mz.logo"); } catch (e) {}
 }
 async function loadItems() {
-  const [items, stock] = await Promise.all([q("items", "*", x => x.eq("hidden", false).order("name").limit(5000)), q("stock", "*", x => x.limit(20000))]);
-  S.items = items; S.stock = stock;
+  const [items, stock, codes, parts] = await Promise.all([q("items", "*", x => x.eq("hidden", false).order("name").limit(5000)), q("stock", "*", x => x.limit(20000)),
+    q("item_codes", "code,item_id", x => x.limit(20000)).catch(() => []), q("kit_parts", "kit_id,part_id,qty", x => x.limit(20000)).catch(() => [])]);
+  S.items = items; S.stock = stock; S.codes = codes; S.kits = {};
+  parts.forEach(k => (S.kits[k.kit_id] = S.kits[k.kit_id] || []).push({ part_id: k.part_id, qty: +k.qty }));
 }
-const stockOf = (id, loc) => S.stock.filter(s => s.item_id === id && (loc == null || loc === "all" || s.location_id === +loc)).reduce((a, s) => a + (+s.qty || 0), 0);
+/* extra codes (Chinese / supplier) find the item too */
+const codesOf = id => (S.codes || []).filter(c => c.item_id === id).map(c => c.code);
+const srch = i => i.name + " " + (i.barcode || "") + " " + i.code + " " + codesOf(i.id).join(" ");
+const byCode = v => S.items.find(i => i.barcode === v || i.code === v) || S.items.find(i => (S.codes || []).some(c => c.item_id === i.id && c.code.toLowerCase() === v.toLowerCase()));
+const ownStock = (id, loc) => S.stock.filter(s => s.item_id === id && (loc == null || loc === "all" || s.location_id === +loc)).reduce((a, s) => a + (+s.qty || 0), 0);
+/* a set's stock = packed sets + sets that can still be built from its pieces (per place) */
+const kitBuild = (id, loc) => { const P2 = (S.kits || {})[id]; if (!P2 || !P2.length) return 0;
+  const one = l => Math.max(0, Math.floor(Math.min(...P2.map(p => ownStock(p.part_id, l) / p.qty))));
+  return loc == null || loc === "all" ? [...new Set(S.stock.map(s => s.location_id))].reduce((a, l) => a + one(l), 0) : one(loc); };
+const stockOf = (id, loc) => ownStock(id, loc) + kitBuild(id, loc);
 
 /* =====================================================================
    SHELL
@@ -399,10 +411,10 @@ V.dash = () => {
 
 /* ---------- items ---------- */
 V.items = () => {
-  const list = S.items.filter(i => (S.dep === "all" || i.department_id === +S.dep) && (!S.q || norm(i.name + " " + (i.barcode || "") + " " + i.code).includes(norm(S.q))));
+  const list = S.items.filter(i => (S.dep === "all" || i.department_id === +S.dep) && (!S.q || norm(srch(i)).includes(norm(S.q))));
   let h = header(can("items", "a") ? `<button class="btn gold" data-act="itemNew">${ico("plus")} صنف جديد</button>` : "");
   h += `<div class="row rise" style="gap:8px"><input class="inp" id="iq" placeholder="ابحث بالاسم أو الباركود أو الكود" value="${esc(S.q)}" style="flex:1;min-width:200px"><select class="inp" id="idep" style="width:auto"><option value="all">كل الأقسام</option>${S.depts.map(d => `<option value="${d.id}" ${+S.dep === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></div>`;
-  h += `<div class="tw rise"><table><thead><tr><th>الصنف</th><th>القسم / المجموعة</th><th>الوحدة</th><th class="n">سعر البيع</th>${seeCost() ? `<th class="n">آخر تكلفة</th>` : ""}<th class="n">الرصيد</th><th></th></tr></thead><tbody>${list.slice(0, 400).map(i => `<tr><td class="pname">${esc(i.name)}<small>${esc(i.code)}${i.barcode ? " · " + esc(i.barcode) : ""}${i.serial_required ? " · مسلسل" : ""}</small></td><td>${esc((S.depts.find(d => d.id === i.department_id) || {}).name || "—")}${i.group_id ? `<br><span class="dim" style="font-size:12px">${esc((S.groups.find(g => g.id === i.group_id) || {}).name || "")}</span>` : ""}</td><td>${UNITS[i.unit]}</td><td class="n">${fmt(i.sale_price, 1)}</td>${seeCost() ? `<td class="n">${fmt(i.last_cost, 1)}</td>` : ""}<td class="n">${num(stockOf(i.id))}</td><td>${can("items", "e") ? `<button class="btn sm ghost" data-act="itemEdit" data-id="${i.id}">تعديل</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">${S.items.length ? "مفيش نتايج." : "لسه مفيش أصناف."}</td></tr>`}</tbody></table></div>`;
+  h += `<div class="tw rise"><table><thead><tr><th>الصنف</th><th>القسم / المجموعة</th><th>الوحدة</th><th class="n">سعر البيع</th>${seeCost() ? `<th class="n">آخر تكلفة</th>` : ""}<th class="n">الرصيد</th><th></th></tr></thead><tbody>${list.slice(0, 400).map(i => `<tr><td class="pname">${esc(i.name)}${(S.kits || {})[i.id] ? ` <span class="chip gold plain" style="font-size:11px">طقم</span>` : ""}<small>${esc(i.code)}${codesOf(i.id).length ? ` · <span title="الكود الصيني">${esc(codesOf(i.id).join("، "))}</span>` : ""}${i.barcode ? " · " + esc(i.barcode) : ""}${i.serial_required ? " · مسلسل" : ""}</small></td><td>${esc((S.depts.find(d => d.id === i.department_id) || {}).name || "—")}${i.group_id ? `<br><span class="dim" style="font-size:12px">${esc((S.groups.find(g => g.id === i.group_id) || {}).name || "")}</span>` : ""}</td><td>${UNITS[i.unit]}</td><td class="n">${fmt(i.sale_price, 1)}</td>${seeCost() ? `<td class="n">${fmt(i.last_cost, 1)}</td>` : ""}<td class="n">${num(ownStock(i.id))}${kitBuild(i.id) ? `<br><span class="dim" style="font-size:11.5px">+${num(kitBuild(i.id))} من القطع</span>` : ""}</td><td style="white-space:nowrap">${can("items", "e") ? `<button class="btn sm ghost" data-act="itemEdit" data-id="${i.id}">تعديل</button>` : ""}${(can("items", "e") || can("items", "a")) && !i.serial_required ? `<button class="btn sm ghost" data-act="kitEdit" data-id="${i.id}">${(S.kits || {})[i.id] ? "الطقم" : "طقم؟"}</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">${S.items.length ? "مفيش نتايج." : "لسه مفيش أصناف."}</td></tr>`}</tbody></table></div>`;
   if (list.length > 400) h += `<p class="dim">بيظهر أول 400 — استخدم البحث.</p>`;
   return h;
 };
@@ -414,6 +426,8 @@ function itemModal(it) {
   modal(`<h2>${it ? "تعديل صنف" : "صنف جديد"}</h2><div class="stack" style="margin-top:10px">
    <div class="field"><label>اسم الصنف</label><input class="inp" id="mName" value="${esc(x.name || "")}"></div>
    <div class="grid g2"><div class="field"><label>الباركود</label><div class="row" style="flex-wrap:nowrap;gap:6px"><input class="inp num" id="mBc" value="${esc(x.barcode || "")}" placeholder="امسحه بالسكانر"><button class="btn sm" id="mGen" title="للأصناف اللي من غير باركود">توليد</button></div></div>
+   <div class="field"><label>الكود ${it ? "" : `<span class="dim">(سيبه فاضي ويتعمل لوحده حسب المجموعة)</span>`}</label><input class="inp num" id="mCode" value="${esc(x.code || "")}" ${it ? "disabled" : `placeholder="تلقائي"`}></div>
+   <div class="field"><label>الكود الصيني / كود المورد <span class="dim">(لو أكتر من كود افصل بفاصلة)</span></label><input class="inp num" id="mCn" value="${esc(it ? codesOf(it.id).join("، ") : "")}" placeholder="مثال: YW-88231"></div>
    <div class="field"><label>الماركة <span class="dim">(لقواعد الضمان)</span></label><input class="inp" id="mBrand" value="${esc(x.brand || "")}" placeholder="مثال: فريش، توشيبا"></div>
    <div class="field"><label>الوحدة</label><select class="inp" id="mUnit">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}" ${x.unit === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
    <div class="field"><label>القسم</label><select class="inp" id="mDep">${S.depts.map(d => `<option value="${d.id}" ${x.department_id === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></div>
@@ -428,15 +442,18 @@ function itemModal(it) {
    <div class="row" style="justify-content:space-between">${it && can("items", "d") ? `<button class="btn sm danger" id="mHide">إخفاء الصنف</button>` : "<span></span>"}<span class="row" style="gap:8px"><button class="btn ghost" id="mCancel">إلغاء</button><button class="btn gold" id="mSave">حفظ</button></span></div></div>`);
   const lenF = () => { $("#mLenF").style.display = $("#mUnit").value === "meter" ? "" : "none"; }; lenF();
   $("#mUnit").onchange = lenF; $("#mCancel").onclick = closeModal; $("#mGen").onclick = e => { e.preventDefault(); $("#mBc").value = ean13(); };
+  const nextCode = () => { if (it || $("#mCode").value.trim() && !$("#mCode").dataset.auto) return; rpc("item_next_code", { p_token: T(), p_department: +$("#mDep").value || null, p_group: +$("#mGrp").value || null }).then(c => { const f = $("#mCode"); if (f && (!f.value || f.dataset.auto)) { f.placeholder = "تلقائي: " + c; } }).catch(() => {}); };
+  if (!it) { nextCode(); $("#mGrp").addEventListener("change", nextCode); $("#mDep").addEventListener("change", () => setTimeout(nextCode, 0)); }
   $("#mDep").onchange = () => { $("#mGrp").innerHTML = `<option value="">— بدون —</option>` + groupsOf($("#mDep").value).map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join(""); };
   $("#mGrpNew").onclick = async e => { e.preventDefault(); const n = prompt("اسم المجموعة الجديدة"); if (!n) return; try { const id = await rpc("group_save", { p_token: T(), p_department: +$("#mDep").value, p_parent: null, p_name: n }); S.groups.push({ id, department_id: +$("#mDep").value, name: n }); $("#mDep").onchange(); $("#mGrp").value = id; } catch (er) { toast(errText(er), true); } };
   const save = async (extra, btn) => {
-    const price = $("#mPrice").value, p = Object.assign({ name: $("#mName").value.trim(), barcode: $("#mBc").value.trim() || null, unit: $("#mUnit").value, department_id: $("#mDep").value, group_id: $("#mGrp").value || null, sale_price: price === "" ? null : +price, min_qty: +$("#mMin").value || 0, warranty_months: +$("#mWar").value || 0, min_length: $("#mUnit").value === "meter" ? ($("#mLen").value || null) : null, serial_required: $("#mSer").checked }, it ? { id: it.id, updated_at: it.updated_at, reason: ($("#mRsn") || {}).value || null } : {}, extra || {});
+    const price = $("#mPrice").value, p = Object.assign({ code: it ? undefined : ($("#mCode").value.trim() || null), name: $("#mName").value.trim(), barcode: $("#mBc").value.trim() || null, unit: $("#mUnit").value, department_id: $("#mDep").value, group_id: $("#mGrp").value || null, sale_price: price === "" ? null : +price, min_qty: +$("#mMin").value || 0, warranty_months: +$("#mWar").value || 0, min_length: $("#mUnit").value === "meter" ? ($("#mLen").value || null) : null, serial_required: $("#mSer").checked }, it ? { id: it.id, updated_at: it.updated_at, reason: ($("#mRsn") || {}).value || null } : {}, extra || {});
     if (!p.name) return ($("#mErr").innerHTML = `<div class="warnbox">اكتب اسم الصنف.</div>`);
     if (p.sale_price == null || p.sale_price < 0) return ($("#mErr").innerHTML = `<div class="warnbox">اكتب سعر البيع.</div>`);
     if (it && +it.sale_price !== +p.sale_price && (!p.reason || p.reason.trim().length < 3)) return ($("#mErr").innerHTML = `<div class="warnbox">غيّرت السعر — اكتب السبب.</div>`);
     busy(btn, true);
-    try { const nid = await rpc("item_save", { p_token: T(), p }); const br = $("#mBrand").value.trim(); if (br !== ((it && it.brand) || "")) await rpc("item_brand_set", { p_token: T(), p_item: nid, p_brand: br }); closeModal(); toast("اتحفظ."); await loadItems(); render(); }
+    try { const nid = await rpc("item_save", { p_token: T(), p }); const br = $("#mBrand").value.trim(); if (br !== ((it && it.brand) || "")) await rpc("item_brand_set", { p_token: T(), p_item: nid, p_brand: br });
+      const cn = $("#mCn").value.split(/[,،\n]/).map(x => x.trim()).filter(Boolean); if (cn.join("|") !== (it ? codesOf(it.id).join("|") : "")) await rpc("item_codes_set", { p_token: T(), p_item: nid, p_codes: cn }); closeModal(); toast("اتحفظ."); await loadItems(); render(); }
     catch (er) { $("#mErr").innerHTML = `<div class="warnbox">${esc(errText(er))}</div>`; busy(btn, false); }
   };
   $("#mSave").onclick = e => save(null, e.target);
@@ -640,7 +657,7 @@ V.pos = () => {
   if (!P.shift && !isSeller) return h + `<div class="card lux rise" style="max-width:480px"><h3>مفيش وردية مفتوحة على درج ${esc(locName(loc))}</h3><div class="field"><label>رصيد الدرج في أول الوردية (الفكّة)</label><input class="inp num" id="shFloat" type="number" min="0" value="0"></div><button class="btn gold" style="margin-top:10px" data-act="shOpen">فتح وردية</button></div>`;
   const q = qGet(), c = cartCalc(), max = +S.sess.role.max_discount_pct || 0;
   const av = i => (window.MZAV ? window.MZAV(i, S.sess.device.location_id) : "on");
-  const items = S.items.filter(i => av(i) !== "hidden" && (P.dep === "all" || i.department_id === +P.dep) && (!P.q || norm(i.name + " " + (i.barcode || "") + " " + i.code).includes(norm(P.q))));
+  const items = S.items.filter(i => av(i) !== "hidden" && (P.dep === "all" || i.department_id === +P.dep) && (!P.q || norm(srch(i)).includes(norm(P.q))));
   h = `<div class="ph"><div><div class="eyebrow">${esc(locName(loc))}${P.shift ? ` · وردية ${esc(P.shift.cashier_name)} من ${new Date(P.shift.opened_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}` : " · البائع بيجهّز الفاتورة للكاشير"}${P.heldNo ? ` · <b>${esc(P.heldNo)}</b>` : ""}</div><h1>${NAME.pos}</h1></div><div class="acts">${q.length ? `<span class="chip warn">${q.length} فاتورة محفوظة على الجهاز</span>` : ""}${isSeller ? "" : `<button class="btn sm" data-act="heldList">المعلّقة</button><button class="btn sm" data-act="shHand">تسليم الوردية</button>`}</div></div>`;
   h += `<div class="pos"><div class="stack" style="gap:12px;min-width:0">
    <div class="scan">${ico("items")}<input id="posQ" placeholder="امسح الباركود أو اكتب اسم الصنف" value="${esc(P.q)}" autocomplete="off"></div>
@@ -670,7 +687,7 @@ H.pos = () => {
   { const sig = cartSig(); if (P.cart.length && P.ofrSig !== sig && P.ofrReq !== sig) ofrFetch(sig); }
   qi.focus();
   qi.oninput = () => { P.q = qi.value; const p = qi.selectionStart; render(); const n = $("#posQ"); n.focus(); n.setSelectionRange(p, p); };
-  qi.onkeydown = e => { if (e.key !== "Enter") return; const v = qi.value.trim(); const it = S.items.find(i => i.barcode === v || i.code === v); if (it) { posAdd(it.id); P.q = ""; render(); } else if (v) toast("مفيش صنف بالباركود ده.", true); };
+  qi.onkeydown = e => { if (e.key !== "Enter") return; const v = qi.value.trim(); const it = byCode(v); if (it) { posAdd(it.id); P.q = ""; render(); } else if (v) toast("مفيش صنف بالباركود ده.", true); };
   const dsc = $("#posDisc"); if (dsc) dsc.onchange = () => { P.disc = Math.max(0, Math.min(100, +dsc.value || 0)); render(); };
   const pin = $("#posPin"); if (pin) pin.oninput = () => { P.pin = pin.value; };
   const cn = $("#cName"), cp = $("#cPhone"); if (cn) { cn.oninput = () => { P.cust.name = cn.value; }; cp.oninput = () => { P.cust.phone = cp.value; }; }
@@ -894,7 +911,7 @@ async function returnModal(saleId) {
      ${lines.map(l => { const it = S.items.find(i => i.id === l.item_id) || { name: "—", unit: "piece" }, left = +l.qty - dq(l.id); const o = l.offer_id && ofOf(l.offer_id), grp = o && (["bxgy", "bundle", "gift"].includes(o.kind) || o.scope === "invoice"), unit = (+l.unit_price * +l.qty - +l.discount) / +l.qty * ratio;
        return `<div class="card" style="padding:10px;${o ? "border:1.5px solid var(--gold)" : ""}"><div class="row between"><b>${esc(it.name)}</b><span class="dim num">اتباع ${num(l.qty)} · رجع قبل كده ${num(dq(l.id))}</span></div>${l.serial ? `<div class="dim num" style="font-size:12px">SN ${esc(l.serial)}</div>` : ""}
        ${o ? `<div style="margin-top:4px"><span class="chip warn">★ ضمن عرض: ${esc(o.name)}</span> <span class="dim" style="font-size:12.5px">${isVoid(l.id) ? "العرض اتلغى في مرتجع قبل كده — بيرجع بسعره العادي" : `سعره في العرض ${fmt(unit, 1)} للوحدة${grp ? " · عرض على مجموعة: لو رجع جزء منه الخصم بيتلغي على الباقي" : ""}`}</span></div>` : ""}
-       ${left > 0 ? `<div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap"><label class="row" style="gap:6px">الكمية <input class="inp num" type="number" min="0" max="${left}" step="${it.unit === "meter" ? "0.1" : "1"}" data-rq="${l.id}" value="0" style="width:80px"></label><select class="inp" data-rc="${l.id}" style="flex:1"><option value="resell">سليم — يرجع للبيع</option><option value="damaged">تالف — ما يرجعش للمخزون</option></select></div>` : `<div class="dim">رجع بالكامل</div>`}</div>`; }).join("")}
+       ${left > 0 ? `<div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap">${!l.serial ? `<button class="btn sm" data-act="swapOpen" data-id="${s.id}" data-l="${l.id}" title="تبديل الصنف ده بصنف تاني">تبديل</button>` : ""}<label class="row" style="gap:6px">الكمية <input class="inp num" type="number" min="0" max="${left}" step="${it.unit === "meter" ? "0.1" : "1"}" data-rq="${l.id}" value="0" style="width:80px"></label><select class="inp" data-rc="${l.id}" style="flex:1"><option value="resell">سليم — يرجع للبيع</option><option value="damaged">تالف — ما يرجعش للمخزون</option></select></div>` : `<div class="dim">رجع بالكامل</div>`}</div>`; }).join("")}
      <div class="grid g2"><div class="field"><label>طريقة رد الفلوس</label><select class="inp" id="rRef">${Object.entries(PAYN).map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}<option value="credit">من غير رد فلوس (استبدال)</option></select></div><div class="field"><label>السبب</label><input class="inp" id="rWhy"></div></div>
      <div id="rPrev"></div>${approve ? "" : `<div class="field"><label>رمز المدير للموافقة</label><input class="inp num" type="password" id="rPin"></div>`}<div id="rErr"></div>
      <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">رجوع</button><button class="btn gold" data-act="retGo" data-id="${s.id}">تسجيل المرتجع</button></div></div>`);
@@ -1414,7 +1431,7 @@ document.addEventListener("click", e => {
   else if (k === "devEdit") devModal(S.devList.find(d => d.id === a.dataset.id));
   else opsClick(k, a);
 });
-window.MZ = { LOGO, logoImg, S, V, H, P, NAME, SUB, NAV, allowed, sb, $, esc, fmt, num, norm, ls, rpc, q, T, can, has, role, seeCost, locName, ico, toast, modal, closeModal, busy, header, render, go, loadItems, loadCore, loadDir, who, today, xlsOut, errText, myLoc, r2, UNITS, PAYN, returnModal };
+window.MZ = { LOGO, logoImg, S, V, H, P, NAME, SUB, NAV, allowed, sb, $, esc, fmt, num, norm, ls, rpc, q, T, can, has, role, seeCost, locName, ico, toast, modal, closeModal, busy, header, render, go, loadItems, loadCore, loadDir, who, today, xlsOut, errText, myLoc, r2, UNITS, PAYN, returnModal, stockOf, ownStock, kitBuild, codesOf, byCode, srch, rcptLines, posDone };
 { const t = ls("minzo-theme"); if (t) document.documentElement.dataset.theme = t; }
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();

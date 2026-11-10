@@ -93,7 +93,7 @@ function waNewModal(opts) {
 async function saleModal(id, cust) {
   try {
     const s = await rpc("customer_sale", { p_token: T(), p_sale: id }); if (!s) throw new Error("NOT_FOUND");
-    const PN = { cash: "كاش", card: "فيزا", insta: "إنستاباي", wallet: "محفظة", inst: "تقسيط", points: "نقاط ولاء", credit: "رصيد" };
+    const PN = { cash: "كاش", card: "فيزا", insta: "إنستاباي", wallet: "محفظة", inst: "تقسيط", points: "نقاط ولاء", credit: "رصيد", exchange: "استبدال" };
     modal(`<h2>فاتورة <span class="num">${esc(s.no)}</span> ${s.status === "void" ? chip("ملغاة", "bad") : ""}</h2><p class="muted" style="margin:0 0 10px">${esc(locName(s.loc))} · ${dt(s.at)}${s.seller ? " · البائع " + esc(s.seller) : ""}${s.cashier ? " · الكاشير " + esc(s.cashier) : ""}</p>
      <div class="tw"><table><thead><tr><th>الصنف</th><th class="n">الكمية</th><th class="n">السعر</th><th class="n">الخصم</th><th class="n">الصافي</th></tr></thead><tbody>${s.lines.map(l => { const d = +l.disc, net = l.qty * l.price - d;
        return `<tr><td class="pname">${esc(l.item)}${l.code ? ` <span class="dim num" style="font-size:12px">${esc(l.code)}</span>` : ""}${l.serial ? `<br><span class="dim num" style="font-size:12px">SN ${esc(l.serial)}</span>` : ""}${l.offer ? `<br>${chip("★ ضمن عرض: " + l.offer, "warn")} <span class="dim" style="font-size:12px">سعره في العرض ${fmt(net / (+l.qty || 1), 1)} للوحدة</span>` : ""}</td><td class="n">${num(l.qty)}</td><td class="n">${fmt(l.price, 1)}</td><td class="n">${d ? "−" + fmt(d, 1) : "—"}</td><td class="n">${fmt(net, 1)}</td></tr>`; }).join("")}</tbody></table></div>

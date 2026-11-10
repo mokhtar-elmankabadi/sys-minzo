@@ -197,6 +197,7 @@ V.customers = () => {
    <div class="card kpi rise" style="--d:1"><div class="lbl">نقاط ولاء قائمة</div><div class="val">${num(pts)}</div><div class="dim" style="font-size:12px">${st.loyalty_on ? `كل ${fmt(st.loyalty_per)} = نقطة · النقطة = ${fmt(st.loyalty_value, 1)} · القيمة ${fmt(pts * +st.loyalty_value)}` : "برنامج الولاء متوقف"}</div></div>
    <div class="card kpi rise" style="--d:2"><div class="lbl">ضمانات أجهزة سارية</div><div class="val">${num(L.reduce((a, c) => a + +c.warranties, 0))}</div><div class="dim" style="font-size:12px">مرتبطة بالمسلسل والعميل</div></div>
    <div class="card kpi rise" style="--d:3"><div class="lbl">عملاء متكررين</div><div class="val">${rep}%</div><div class="dim" style="font-size:12px">اشتروا أكتر من مرة</div></div></div>`;
+  if (M.bday) h += M.bday.card(L);
   h += `<div class="card rise"><h3>البحث عن ضمان بالمسلسل</h3><div class="row" style="gap:8px"><input class="inp num" style="max-width:300px" id="snQ" placeholder="الرقم التسلسلي"><button class="btn gold" data-act="snLook">بحث</button></div><div id="snRes" style="margin-top:10px"></div></div>`;
   const F = cuFiltered(), sel = new Set(C.sel), allSel = F.length > 0 && F.every(c => sel.has(c.id)), f = C.f;
   h += `<div class="card rise"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
@@ -220,7 +221,7 @@ function cuEditModal(c) {
   const x = c || { name: "", phone: "", area: "", address: "", notes: "" };
   modal(`<h2>${c ? "تعديل بيانات العميل" : "عميل جديد"}</h2><div class="stack"><div class="grid g2"><div class="field"><label>الاسم</label><input class="inp" id="cN" value="${esc(x.name)}"></div><div class="field"><label>الموبايل</label><input class="inp num" id="cP" value="${esc(x.phone || "")}" inputmode="tel"></div>
    <div class="field"><label>المنطقة</label><input class="inp" id="cA" value="${esc(x.area || "")}"></div><div class="field"><label>العنوان</label><input class="inp" id="cD" value="${esc(x.address || "")}"></div></div>
-   <div class="field"><label>ملاحظات</label><input class="inp" id="cO" value="${esc(x.notes || "")}"></div><div id="cErr"></div>
+   <div class="grid g2"><div class="field"><label>تاريخ الميلاد <span class="dim">(لتهنئة عيد الميلاد)</span></label><input class="inp" type="date" id="cB" value="${esc(x.birthday || "")}"></div><div class="field"><label>ملاحظات</label><input class="inp" id="cO" value="${esc(x.notes || "")}"></div></div><div id="cErr"></div>
    <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn ghost" data-act="mClose">إلغاء</button><button class="btn gold" data-act="cuSave" data-id="${c ? c.id : ""}">حفظ</button></div></div>`);
 }
 async function cuOpen(id) {
@@ -480,7 +481,7 @@ window.MZX = async function (k, a) {
   else if (k === "cuSel") { const set = new Set(S.cu.sel); a.checked ? set.add(id) : set.delete(id); S.cu.sel = [...set]; render(); }
   else if (k === "cuSelAll") { const set = new Set(S.cu.sel), F = cuFiltered(); if (a.checked) F.forEach(c => set.add(c.id)); else F.forEach(c => set.delete(c.id)); S.cu.sel = [...set]; render(); }
   else if (k === "cuSelNone") { S.cu.sel = []; render(); }
-  else if (k === "cuSave") { const p = { id: id || null, name: $("#cN").value, phone: $("#cP").value, area: $("#cA").value, address: $("#cD").value, notes: $("#cO").value };
+  else if (k === "cuSave") { const p = { id: id || null, name: $("#cN").value, phone: $("#cP").value, area: $("#cA").value, address: $("#cD").value, notes: $("#cO").value, birthday: $("#cB").value || null };
     if (p.phone && !/^01\d{9}$/.test(p.phone.trim())) { errBox("#cErr", "رقم الموبايل غلط."); return true; }
     wrap(() => rpc("customer_save", { p_token: T(), p }), async () => { closeModal(); toast("اتحفظ."); S.cu.loaded = false; render(); }, "#cErr"); }
   else if (k === "cuPts") cuPtsModal(id, a.dataset.k);

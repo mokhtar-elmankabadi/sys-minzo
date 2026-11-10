@@ -3,5 +3,5 @@
 window.MINZO_CONFIG = {
   url: "https://ewoblpuwgkpcgrlqhiwu.supabase.co",
   key: "sb_publishable_6Kb_0DduTyHpzedRnpCXkg_BO-aPpwX",
-  version: "1.13.0"
+  version: "1.14.0"
 };

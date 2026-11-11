@@ -15,6 +15,7 @@ const RUN = { draft: ["مسودة", "warn"], approved: ["معتمدة — مست
 const hm = x => x ? new Date(new Date(x).getTime() + 2 * 3600e3).toISOString().slice(11, 16) : "";
 
 /* ---------- check in / out from the top bar ---------- */
+M.punchState = () => punchState();
 async function punchState() { try { S.att = await rpc("attend_today", { p_token: T() }); } catch (e) { S.att = null; } paintPunch(); }
 function paintPunch() { const top = $("#top"); if (!top || !S.sess) return; let b = $("#mzPunch"); if (!b) { b = document.createElement("button"); b.id = "mzPunch"; b.className = "ctl"; b.dataset.act = "punch"; const lock = top.querySelector("[data-act=lock]"); top.insertBefore(b, lock); }
   const a = S.att; b.textContent = !a || !a.check_in ? "تسجيل حضور" : !a.check_out ? `انصراف · من ${dt(a.check_in)}` : `انصرفت ${dt(a.check_out)}`; b.disabled = !!(a && a.check_out); }
@@ -38,7 +39,7 @@ V.staff = () => {
   if (W.tab === "att") {
     const rows = people.map(p => ({ p, a: W.att.find(a => a.staff_id === p.id && a.day === W.day) }));
     h += `<div class="card rise"><div class="row" style="gap:8px;margin-bottom:10px"><input class="inp" type="date" id="spD" value="${W.day}" max="${today()}" style="width:auto"><span class="dim">${rows.filter(r => r.a && r.a.check_in).length} حاضر من ${rows.length}</span></div>
-     <div class="tw"><table><thead><tr><th>الموظف</th><th>المكان</th><th>حضور</th><th>انصراف</th><th>الحالة</th><th>ملاحظة</th><th></th></tr></thead><tbody>${rows.map(({ p, a }) => `<tr><td>${esc(p.name)}</td><td class="muted">${p.location_id ? esc(locName(p.location_id)) : "كل الأماكن"}</td><td class="num">${a ? dt(a.check_in) : "—"}</td><td class="num">${a ? dt(a.check_out) : "—"}</td><td>${a ? chip(ST[a.status][0], ST[a.status][1]) + (a.source === "manual" ? " " + chip("يدوي") : "") : chip("ما سجّلش", "warn")}</td><td class="muted" style="font-size:12.5px">${esc((a && a.note) || "")}</td><td>${ed || ["mgr", "asstmgr"].includes(S.sess.role.id) ? `<button class="btn sm ghost" data-act="attEdit" data-id="${p.id}">تعديل</button>` : ""}</td></tr>`).join("") || empty(7, "مفيش موظفين.")}</tbody></table></div>
+     <div class="tw"><table><thead><tr><th>الموظف</th><th>المكان</th><th>حضور</th><th>انصراف</th><th>الحالة</th><th>ملاحظة</th><th></th></tr></thead><tbody>${rows.map(({ p, a }) => `<tr><td>${esc(p.name)}</td><td class="muted">${p.location_id ? esc(locName(p.location_id)) : "كل الأماكن"}</td><td class="num">${a ? dt(a.check_in) : "—"}</td><td class="num">${a ? dt(a.check_out) : "—"}</td><td>${a ? chip(ST[a.status][0], ST[a.status][1]) + (a.source === "manual" ? " " + chip("يدوي") : "") + (a.source === "gps" ? " " + chip(a.outside ? "📍 بره المكان" : "📍 موبايل", a.outside ? "bad" : "plain") : "") : chip("ما سجّلش", "warn")}</td><td class="muted" style="font-size:12.5px">${esc((a && a.note) || "")}</td><td>${ed || ["mgr", "asstmgr"].includes(S.sess.role.id) ? `<button class="btn sm ghost" data-act="attEdit" data-id="${p.id}">تعديل</button>` : ""}</td></tr>`).join("") || empty(7, "مفيش موظفين.")}</tbody></table></div>
      <p class="dim" style="font-size:12.5px;margin-bottom:0">كل موظف بيسجّل حضوره وانصرافه برمزه من زرار «تسجيل حضور» فوق. التعديل اليدوي محتاج سبب وبيتسجّل في سجل التدقيق.</p></div>`;
   }
   if (W.tab === "month") {

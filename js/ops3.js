@@ -272,6 +272,52 @@ const REPORTS = [
   ["deliv", "التوصيل والضرائب", "طلبات التوصيل والتركيب", 0, D => ({ k: [["الطلبات", D.dlv.length, 1], ["اتسلّمت", D.dlv.filter(d => ["delivered", "closed"].includes(d.status)).length, 1], ["بتركيب", D.dlv.filter(d => d.install).length, 1]], head: ["الطلب", "التاريخ", "المعرض", "العميل", "المنطقة", "تركيب", "المندوب", "الحالة"], rows: D.dlv.filter(d => inLoc(d.location_id)).map(d => [d.no, d.created_at.slice(0, 10), locName(d.location_id), d.customer_name, d.area || "", d.install ? "نعم" : "", d.driver || "", { new: "جديد", prep: "قيد التجهيز", way: "في الطريق", delivered: "اتسلّم", closed: "اتقفل", cancelled: "ملغي" }[d.status]]), sens: [3] })],
   ["tax", "التوصيل والضرائب", "الملخص الضريبي", 0, D => { const P = posted(D), g = groupBy(D.lines.filter(l => P.some(s => s.id === l.sale_id)), l => { const i = itm(l.item_id); return i.vat_rate != null ? +i.vat_rate : +((S.store || {}).vat_rate || 14); });
     return { head: ["النسبة", "المبيعات قبل الضريبة", "الضريبة"], rows: [...g].map(([k, a]) => [k + "%", r2(sum(a, lineNet)), r2(sum(a, l => l.vat))]), note: (S.store || {}).vat_registered ? "الضريبة المستحقة في الفترة على حساب «ضريبة القيمة المضافة المستحقة»." : "المحل مش مسجّل في الضريبة — الملخص هيبقى فيه أرقام بعد التفعيل." }; }],
+  ["resv", "الحجوزات وعروض الأسعار", "الحجوزات والعرابين", 0, async () => { const { from, to } = S.per, L = await q("reservations", "*", x => x.order("created_at", { ascending: false }).limit(5000)), inP = r => r.created_at.slice(0, 10) >= from && r.created_at.slice(0, 10) <= to;
+    const custs = await q("customers", "id,name,phone", x => x.in("id", [...new Set(L.map(r => r.customer_id).filter(Boolean))].slice(0, 900))).catch(() => []), cn = id => (custs.find(c => c.id === id) || {}).name || "—";
+    const P = L.filter(r => inP(r) && inLoc(r.location_id)), open = L.filter(r => r.status === "open" && inLoc(r.location_id)), late = open.filter(r => r.due_date && r.due_date < today()), st = { open: "مفتوح", done: "اتسلّم", cancelled: "اتلغى" };
+    return { k: [["عرابين في الخزنة دلوقتي", sum(open, r => r.deposit)], ["حجوزات مفتوحة", open.length, 1], ["فات ميعادها", late.length, 1], ["اتسلّمت من حجوزات الفترة", P.length ? pct(P.filter(r => r.status === "done").length / P.length * 100) : "—", 1]],
+      head: ["الحجز", "التاريخ", "المعرض", "العميل", "القيمة", "العربون", "الباقي", "الميعاد", "الحالة"], rows: P.map(r => [r.no, r.created_at.slice(0, 10), locName(r.location_id), cn(r.customer_id), r2(r.total), r2(r.deposit), r.status === "open" ? r2(+r.total - +r.deposit) : 0, r.due_date || "—", (st[r.status] || r.status) + (r.status === "open" && r.due_date && r.due_date < today() ? " · فات ميعاده" : "")]), bar: 4 }; }],
+  ["quotes", "الحجوزات وعروض الأسعار", "عروض الأسعار ونسبة تحويلها لفواتير", 0, async () => { const { from, to } = S.per, L = (await q("quotes", "id,no,location_id,customer_name,customer_phone,total,valid_until,staff_id,created_at,sale_id,converted_at", x => x.gte("created_at", from + "T00:00:00+02:00").lte("created_at", to + "T23:59:59+02:00").limit(5000))).filter(r => inLoc(r.location_id));
+    await loadDir(); const conv = L.filter(r => r.sale_id), g = groupBy(L, r => r.staff_id);
+    return { k: [["عروض الأسعار", L.length, 1], ["اتحوّلت لفواتير", conv.length, 1], ["نسبة التحويل", L.length ? pct(conv.length / L.length * 100) : "—", 1], ["قيمة اللي اتحوّل", sum(conv, r => r.total)]],
+      head: ["الموظف", "عروض", "اتحوّلت", "النسبة", "قيمة العروض", "قيمة اللي اتحوّل"], rows: [...g].map(([k, a]) => { const c = a.filter(r => r.sale_id); return [who(k), a.length, c.length, pct(a.length ? c.length / a.length * 100 : 0), r2(sum(a, r => r.total)), r2(sum(c, r => r.total))]; }).sort((a, b) => b[5] - a[5]), bar: 5,
+      note: "التحويل بيتحسب للعروض اللي اتعملت لها فاتورة بزرار «فاتورة» من عرض السعر — من نسخة 1.18.0 وطالع." }; }],
+  ["coupons", "العروض والمرتجعات", "أداء الكوبونات", 0, async D => { const { from, to } = S.per, U = await q("coupon_uses", "*", x => x.gte("created_at", from + "T00:00:00+02:00").lte("created_at", to + "T23:59:59+02:00").limit(20000)), C = await q("coupons", "id,code,kind,value,status,uses,max_uses,ends_at");
+    const P = new Map(posted(D).map(s => [s.id, s])), g = groupBy(U.filter(u => P.has(u.sale_id)), u => u.coupon_id);
+    const rows = C.map(c => { const a = g.get(c.id) || []; return [c.code, c.kind === "pct" ? num(c.value) + "٪" : fmt(c.value), a.length, new Set(a.map(u => u.customer_phone).filter(Boolean)).size, r2(sum(a, u => u.amount)), r2(sum(a, u => (P.get(u.sale_id) || {}).total)), c.status === "active" ? (c.ends_at && c.ends_at < today() ? "انتهى" : "شغال") : "موقوف"]; }).filter(r => r[2] > 0 || r[6] === "شغال").sort((a, b) => b[5] - a[5]);
+    return { k: [["مرات الاستخدام", sum(rows, r => r[2]), 1], ["إجمالي الخصم", sum(rows, r => r[4])], ["مبيعات بالكوبونات", sum(rows, r => r[5])], ["كل جنيه خصم جاب", sum(rows, r => r[4]) ? num(r2(sum(rows, r => r[5]) / sum(rows, r => r[4]))) + " جنيه" : "—", 1]],
+      head: ["الكوبون", "القيمة", "مرات الاستخدام", "عملاء مختلفين", "الخصم", "صافي الفواتير", "الحالة"], rows, bar: 5 }; }],
+  ["swaps", "العروض والمرتجعات", "التبديل والمرتجع على العروض", 0, async D => { const R = D.rets.filter(r => inLoc(r.location_id)), sw = R.filter(r => r.exchange_sale), ob = R.filter(r => +r.offer_back > 0), sale = id => D.sales.find(s => s.id === id);
+    const extra = sw.length ? await inChunks("sales", "id", sw.map(r => r.exchange_sale)).catch(() => []) : [], ns = id => (extra.find(s => s.id === id) || sale(id) || {});
+    return { k: [["عمليات تبديل", sw.length, 1], ["قيمة المرتجع في التبديل", sum(sw, r => r.amount)], ["فواتير التبديل الجديدة", sum(sw, r => +(ns(r.exchange_sale).total || 0))], ["مخصوم بسبب كسر عرض", sum(ob, r => r.offer_back)]],
+      head: ["التاريخ", "المعرض", "الفاتورة الأصلية", "المرتجع", "الفاتورة الجديدة", "قيمتها", "الفرق", "مخصوم عرض"], rows: R.filter(r => r.exchange_sale || +r.offer_back > 0).map(r => { const n = ns(r.exchange_sale), o = sale(r.sale_id) || {}; return [r.created_at.slice(0, 10), locName(r.location_id), o.no || "—", r2(r.amount), n.no || "—", r2(+(n.total || 0)), r2(+(n.total || 0) - +r.amount), r2(+r.offer_back || 0)]; }),
+      note: "الفرق بالموجب = العميل دفع زيادة، وبالسالب = اترد له. «مخصوم عرض» = اللي اتخصم من المرتجع لأن القطعة كانت جزء من عرض." }; }],
+  ["kits", "المخزون", "الأطقم: تجميع وفك وبيع", 0, async () => { const K = await rpc("kit_stats", { p_token: T() }), P = await q("kit_parts", "*");
+    return { head: ["الطقم", "عدد الأجزاء", "متجمّع في الكرتونة دلوقتي", "اتجمّع", "اتعمل طقم مفتوح", "اتفك", "اتباع"], rows: (K || []).map(k => [itm(k.kit_id).name, P.filter(p => p.kit_id === k.kit_id).length, r2(k.packed), r2(k.built), r2(k.open), r2(k.apart), r2(k.sold)]).sort((a, b) => b[6] - a[6]), bar: 6,
+      note: "الأرقام من أول تشغيل الأطقم، لكل الأماكن." }; }],
+  ["stktk", "المخزون", "نتايج الجرد وفروقه", 1, async () => { const { from, to } = S.per, L = (await rpc("stocktakes_list", { p_token: T() })).filter(t => t.status === "posted" && inLoc(t.loc) && (t.posted_at || "").slice(0, 10) >= from && (t.posted_at || "").slice(0, 10) <= to);
+    return { k: [["جرد اتعتمد", L.length, 1], ["قيمة العجز", -sum(L, t => t.short_value), 0, "--bad"], ["قيمة الزيادة", sum(L, t => t.over_value)], ["الصافي", sum(L, t => +t.short_value + +t.over_value)]],
+      head: ["الجرد", "المكان", "بدأ", "اتعتمد", "العجز", "الزيادة", "الصافي"], rows: L.map(t => [t.no, locName(t.loc), (t.started_at || "").slice(0, 10), (t.posted_at || "").slice(0, 10), r2(-t.short_value), r2(t.over_value), r2(+t.short_value + +t.over_value)]) }; }],
+  ["stkstaff", "المخزون", "الجرد لكل موظف", 0, async () => { const { from, to } = S.per, L = await rpc("stocktake_staff_stats", { p_token: T(), p_from: from, p_to: to });
+    return { head: ["الموظف", "عدد مرات الجرد", "أصناف عدّها", "مرات التسجيل", "أصناف اتعادت", "نسبة اللي اتعاد"], rows: (L || []).map(r => [r.staff, r.counts, r.items, r.entries, r.redone, pct(r.items ? r.redone / r.items * 100 : 0)]),
+      note: "«اتعادت» = الصنف اللي عدّه وبعدين اتطلب له عدّ تاني بسبب فرق. نسبة عالية معناها محتاج يركّز أكتر أو يتدرّب. الجرد المعتمد في الفترة بس." }; }],
+  ["attgeo", "الموظفين", "البصمة بالموبايل من بره المكان", 0, async () => { const { from, to } = S.per, days = Math.max(1, Math.ceil((new Date(today()) - new Date(from)) / 864e5) + 1), L = (await rpc("att_events_list", { p_token: T(), p_days: Math.min(400, days) })).filter(e => e.at.slice(0, 10) >= from && e.at.slice(0, 10) <= to && (e.loc == null || inLoc(e.loc)));
+    const KN = { in_out: "حضور من بره", out_out: "انصراف من بره", away: "خرج", back: "رجع" }, g = groupBy(L, e => e.staff);
+    return { k: [["حضور من بره المكان", L.filter(e => e.kind === "in_out").length, 1], ["انصراف من بره المكان", L.filter(e => e.kind === "out_out").length, 1], ["مرات الخروج أثناء الشغل", L.filter(e => e.kind === "away").length, 1]],
+      head: ["الموظف", "حضور من بره", "انصراف من بره", "خرج من المكان", "رجع", "أبعد مسافة (متر)", "آخر مرة"], rows: [...g].map(([k, a]) => [k, a.filter(e => e.kind === "in_out").length, a.filter(e => e.kind === "out_out").length, a.filter(e => e.kind === "away").length, a.filter(e => e.kind === "back").length, Math.max(0, ...a.map(e => +e.dist || 0)), dt(a[0].at)]).sort((a, b) => b[1] + b[2] + b[3] - a[1] - a[2] - a[3]),
+      note: "التفاصيل والخريطة في شاشة «الموظفين والمرتبات» ← الحضور اليومي." }; }],
+  ["bdays", "العملاء", "أعياد ميلاد العملاء", 0, async () => { const L = (await rpc("customers_list", { p_token: T() })).filter(c => c.birthday), t = today(), md = d => d.slice(5);
+    const next = c => { let y = +t.slice(0, 4), d = y + "-" + md(c.birthday); if (d < t) d = (y + 1) + "-" + md(c.birthday); return d; };
+    const rows = L.map(c => { const n = next(c), inD = Math.round((new Date(n) - new Date(t)) / 864e5); return [c.name || "—", c.phone || "", c.birthday, n, inD, r2(c.spent || c.total || 0)]; }).filter(r => r[4] <= 31).sort((a, b) => a[4] - b[4]);
+    return { k: [["النهارده", rows.filter(r => r[4] === 0).length, 1], ["الأسبوع ده", rows.filter(r => r[4] <= 7).length, 1], ["خلال شهر", rows.length, 1]], head: ["العميل", "الموبايل", "تاريخ الميلاد", "عيد الميلاد الجاي", "بعد كام يوم", "مشترياته"], rows, sens: [1],
+      note: "التهنئة من غير خصم، زي ما اتفقنا. الموبايل بيظهر حسب صلاحيتك." }; }],
+  ["custnew", "العملاء", "العملاء الجداد والمتكررين", 0, async D => { const P = posted(D), withC = P.filter(s => s.customer_id), g = groupBy(withC, s => s.customer_id), ids = [...g.keys()];
+    const C = ids.length ? await inChunks("customers", "id", ids) : [], cust = id => C.find(c => c.id === id) || {}, { from } = S.per;
+    const prev = ids.length ? await inChunks("sales", "customer_id", ids).catch(() => []) : [], before = new Set(prev.filter(s => s.status === "posted" && s.business_day < from).map(s => s.customer_id));
+    const rows = [...g].map(([k, a]) => { const c = cust(k), isNew = !before.has(k); return [c.name || "—", c.phone || "", isNew ? "جديد" : "متكرر", a.length, r2(sum(a, s => s.total)), a.map(s => s.business_day).sort().pop()]; }).sort((a, b) => b[4] - a[4]);
+    const nw = rows.filter(r => r[2] === "جديد");
+    return { k: [["عملاء اشتروا", rows.length, 1], ["جداد", nw.length, 1], ["رجعوا اشتروا تاني", rows.length - nw.length, 1], ["فواتير عليها عميل", P.length ? pct(withC.length / P.length * 100) : "—", 1]],
+      head: ["العميل", "الموبايل", "النوع", "فواتير الفترة", "مشتريات الفترة", "آخر شراء"], rows, sens: [1], bar: 4 }; }],
   ["forecast", "التحليل والتنبؤ", "التنبؤ بالمبيعات والاقتراحات", 1, "forecast"],
   ["final", "التقارير النهائية", "التقارير النهائية (Final Reports)", 0, "final"]
 ];
@@ -285,42 +331,146 @@ V.reports = () => {
 };
 H.reports = async () => { perHook(); const R = S.rp, qi = $("#rpQ"); if (qi) qi.oninput = () => { R.q = qi.value; const p = qi.selectionStart; render(); const n = $("#rpQ"); n.focus(); n.setSelectionRange(p, p); };
   const r = REPORTS.find(x => x[0] === R.id) || REPORTS[0]; if (r[3] && !seeCost()) return; const body = $("#rpBody"), key = r[0] + perKey() + S.per.loc;
-  try { if (r[4] === "forecast") { body.innerHTML = await forecastHTML(); return; } if (r[4] === "final") { body.innerHTML = finalHTML(); return; }
+  try { if (r[4] === "forecast") { const fh = await forecastHTML(); if (!$("#rpBody") || S.rp.id !== r[0]) return; body.innerHTML = fh; const fl = $("#fcLoc"); if (fl) fl.onchange = () => { S.fc.loc = fl.value; render(); }; return; } if (r[4] === "final") { body.innerHTML = finalHTML(); return; }
     const out = await runReport(r); if (!$("#rpBody") || S.route !== "reports" || (S.rp.id !== r[0])) return;
     if (out.link) { body.innerHTML = `<p class="muted">التقرير ده شاشة كاملة.</p><button class="btn gold" data-go="${out.link}">فتح «${esc(M.NAME[out.link])}»</button>`; return; }
     R.last = { title: r[2], head: out.head, rows: out.rows, sens: out.sens || [] };
     const bi = out.bar, mx = bi != null ? Math.max(...out.rows.map(x => Math.abs(+x[bi]) || 0), 1) : 0;
-    body.innerHTML = (out.k ? kpis(out.k.map(x => [x[0], x[2] ? num(x[1]) : x[1], x[2] ? 1 : 0])) : "") + `<div class="tw"><table><thead><tr>${out.head.map((x, i) => `<th class="${i && typeof (out.rows[0] || [])[i] === "number" ? "n" : ""}">${esc(x)}</th>`).join("")}${bi != null ? "<th></th>" : ""}</tr></thead><tbody>${out.rows.slice(0, 500).map(row => `<tr>${row.map((v, i) => `<td class="${typeof v === "number" ? "n" : ""}">${typeof v === "number" ? (/^(الفواتير|عدد|الكمية|الرصيد|الورديات|ورديات|منها|اتباع في|الكمية الأصلية|الباقي|النقاط)/.test(out.head[i]) ? num(v) : fmt(v, 1)) : esc(v)}</td>`).join("")}${bi != null ? `<td style="width:16%">${bar(Math.abs(+row[bi]) || 0, mx)}</td>` : ""}</tr>`).join("") || empty(out.head.length + 1, "مفيش بيانات في الفترة دي.")}</tbody></table></div>${out.rows.length > 500 ? `<p class="dim">ظاهر أول ٥٠٠ من ${num(out.rows.length)} — صدّر عشان تشوف الكل.</p>` : ""}${out.note ? `<p class="dim" style="font-size:12.5px">${esc(out.note)}</p>` : ""}`;
+    body.innerHTML = (out.k ? kpis(out.k.map(x => [x[0], typeof x[1] === "string" ? x[1] : x[2] ? num(x[1]) : x[1], typeof x[1] === "string" || x[2] ? 1 : 0, x[3]])) : "") + `<div class="tw"><table><thead><tr>${out.head.map((x, i) => `<th class="${i && typeof (out.rows[0] || [])[i] === "number" ? "n" : ""}">${esc(x)}</th>`).join("")}${bi != null ? "<th></th>" : ""}</tr></thead><tbody>${out.rows.slice(0, 500).map(row => `<tr>${row.map((v, i) => `<td class="${typeof v === "number" ? "n" : ""}">${typeof v === "number" ? (/^(الفواتير|عدد|الكمية|الرصيد|الورديات|ورديات|منها|اتباع في|الكمية الأصلية|الباقي|النقاط)/.test(out.head[i]) ? num(v) : fmt(v, 1)) : esc(v)}</td>`).join("")}${bi != null ? `<td style="width:16%">${bar(Math.abs(+row[bi]) || 0, mx)}</td>` : ""}</tr>`).join("") || empty(out.head.length + 1, "مفيش بيانات في الفترة دي.")}</tbody></table></div>${out.rows.length > 500 ? `<p class="dim">ظاهر أول ٥٠٠ من ${num(out.rows.length)} — صدّر عشان تشوف الكل.</p>` : ""}${out.note ? `<p class="dim" style="font-size:12.5px">${esc(out.note)}</p>` : ""}`;
   } catch (e) { if ($("#rpBody")) $("#rpBody").innerHTML = `<div class="warnbox">${esc(errText(e))}</div>`; } };
 
 /* ---------- forecast & suggestions ---------- */
+const SEAS = { 9: 1.25, 10: 1.35, 12: 1.15 };   // Ramadan, Shawwal (Eid), Dhu al-Hijjah
+const dowOf = d => new Date(d + "T12:00:00Z").getUTCDay();
+/* the forecast: uses only days before asOf; forecasts n days starting asOf + start */
+function fcCalc(byDay, asOf, n, start) {
+  const days = Object.keys(byDay).filter(d => d < asOf).sort(); if (!days.length) return null;
+  const span = (new Date(asOf) - new Date(days[0])) / 864e5; if (days.length < 30 || span < 30) return null;
+  const last = k => { let s = 0; for (let i = 1; i <= k; i++) s += byDay[addD(asOf, -i)] || 0; return s / k; };
+  const base = 0.6 * last(28) + 0.4 * last(Math.min(90, Math.floor(span))), all = days.map(d => byDay[d]), avg = sum(all, x => x) / all.length;
+  const dowF = [0, 1, 2, 3, 4, 5, 6].map(w => { const v = days.filter(d => dowOf(d) === w).map(d => byDay[d]); return v.length >= 3 && avg ? (sum(v, x => x) / v.length) / avg : 1; });
+  const vol = (() => { const v = days.slice(-60).map(d => byDay[d]), m = sum(v, x => x) / v.length; return Math.sqrt(sum(v, x => (x - m) ** 2) / v.length) / (m || 1); })();
+  let tot = 0, ram = 0; const daily = [];
+  for (let i = start; i < start + n; i++) { const d = addD(asOf, i), s = SEAS[hijriM(d)] || 1; if (s > 1) ram++; const v = base * (dowF[dowOf(d)] || 1) * s; daily.push([d, v]); tot += v; }
+  const w = Math.min(0.35, vol / Math.sqrt(n / 7));
+  return { tot, lo: tot * Math.max(0.5, 1 - w), hi: tot * (1 + w), base, daily, ram, vol };
+}
+const HZ = { month: 30, quarter: 91, half: 182, year: 365 };
+/* line chart: series [{name, vals, color, dash}] over labels; band = [lo[], hi[]] for one series */
+function lineChart(id, labels, series, band) {
+  const W = 720, Hh = 230, L = 58, R = 92, T = 12, B = 26, all = series.flatMap(s => s.vals.filter(v => v != null)).concat(band ? band[1].filter(v => v != null) : []);
+  const mx = Math.max(1, ...all), step = (() => { const r = mx / 4, p = 10 ** Math.floor(Math.log10(r)), m = r / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; })(), top = step * Math.ceil(mx / step);
+  const X = i => L + (labels.length < 2 ? 0 : i * (W - L - R) / (labels.length - 1)), Y = v => T + (Hh - T - B) * (1 - v / top);
+  const path = vals => { let d = "", on = false; vals.forEach((v, i) => { if (v == null) { on = false; return; } d += (on ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1); on = true; }); return d; };
+  let g = ""; for (let v = 0; v <= top + 1e-9; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--vgrid)"/><text x="${L - 8}" y="${Y(v) + 4}" text-anchor="end">${fmtK(v)}</text>`;
+  const every = Math.max(1, Math.ceil(labels.length / 8)); labels.forEach((l, i) => { if (i % every === 0 || (i === labels.length - 1 && i % every >= every / 2)) g += `<text x="${X(i)}" y="${Hh - 6}" text-anchor="middle">${esc(l)}</text>`; });
+  if (band) { const idx = band[0].map((v, i) => v == null ? -1 : i).filter(i => i >= 0); if (idx.length > 1) g += `<path d="M${idx.map(i => X(i) + " " + Y(band[1][i])).join("L")}L${idx.slice().reverse().map(i => X(i) + " " + Y(band[0][i])).join("L")}Z" fill="${band[2]}" opacity=".13"/>`; }
+  const ends = []; series.forEach(s => { g += `<path d="${path(s.vals)}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${s.dash ? 'stroke-dasharray="5 5"' : ""}/>`;
+    let li = -1; s.vals.forEach((v, i) => { if (v != null) li = i; }); if (li >= 0 && s.label !== false) ends.push({ y: Y(s.vals[li]), x: X(li), t: s.name, c: s.color }); });
+  ends.sort((a, b) => a.y - b.y); for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  ends.forEach(e => { g += `<circle cx="${e.x}" cy="${e.y}" r="0"/><text class="lbl" x="${W - R + 8}" y="${e.y + 4}">${esc(e.t)}</text>`; });
+  g += `<line class="cross" x1="0" x2="0" y1="${T}" y2="${Hh - B}"/>`;
+  const cw = labels.length > 1 ? (W - L - R) / (labels.length - 1) : W - L - R;
+  labels.forEach((l, i) => { const tip = `<b>${esc(l)}</b>` + series.filter(s => s.vals[i] != null).map(s => `<br><i style="background:${s.color}"></i>${esc(s.name)}: ${fmt(s.vals[i])}`).join("") + (band && band[0][i] != null ? `<br><span class="dim">المدى ${fmt(band[0][i])} – ${fmt(band[1][i])}</span>` : "");
+    g += `<rect class="hit" x="${X(i) - cw / 2}" y="${T}" width="${cw}" height="${Hh - T - B}" data-x="${X(i)}" data-tip="${esc(tip)}"/>`; });
+  return `<div class="viz" id="${id}"><svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="رسم بياني">${g}</svg><div class="vtip"></div></div>`;
+}
+const fmtK = v => v >= 1e6 ? (v / 1e6).toLocaleString("ar-EG", { maximumFractionDigits: 1 }) + " مليون" : v >= 1e3 ? (v / 1e3).toLocaleString("ar-EG", { maximumFractionDigits: 1 }) + " ألف" : num(v);
+const legend = list => `<div class="vleg">${list.map(([n, c, d]) => `<span><i class="${d ? "dash" : ""}" style="${d ? "color" : "background"}:${c}"></i>${esc(n)}</span>`).join("")}</div>`;
+/* chart hover: one listener for every chart */
+if (!window.__mzViz) { window.__mzViz = 1;
+  const show = (e, r) => { const v = r.closest(".viz"), tip = v.querySelector(".vtip"), cr = v.querySelector(".cross"), svg = v.querySelector("svg"), k = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width, x = +r.dataset.x;
+    cr.setAttribute("x1", x); cr.setAttribute("x2", x); cr.style.display = "block"; tip.innerHTML = r.dataset.tip; tip.style.display = "block";
+    const px = x * k, w = tip.offsetWidth; tip.style.left = Math.max(0, Math.min(v.clientWidth - w, px + (px > v.clientWidth / 2 ? -w - 12 : 12))) + "px"; tip.style.top = "8px"; };
+  document.addEventListener("mouseover", e => { const r = e.target.closest && e.target.closest(".viz .hit"); if (r) show(e, r); });
+  document.addEventListener("touchstart", e => { const r = e.target.closest && e.target.closest(".viz .hit"); if (r) show(e, r); }, { passive: true });
+  document.addEventListener("mouseout", e => { const v = e.target.closest && e.target.closest(".viz"); if (v && !(e.relatedTarget && v.contains(e.relatedTarget))) { v.querySelector(".vtip").style.display = "none"; v.querySelector(".cross").style.display = "none"; } });
+}
+const weekLbl = d => new Date(d + "T12:00:00Z").toLocaleDateString("ar-EG", { day: "numeric", month: "short" });
+
 async function forecastHTML() {
-  const hist = await q("sales", "business_day,total,status,location_id", x => x.gte("business_day", addD(today(), -400)).eq("status", "posted").limit(50000)), D = await loadRep();
-  const byDay = {}; hist.filter(s => inLoc(s.location_id)).forEach(s => { byDay[s.business_day] = (byDay[s.business_day] || 0) + +s.total; });
-  const days = Object.keys(byDay).sort(), H0 = S.fc || (S.fc = { h: "month" });
-  let h = `<div class="tabs" style="margin-bottom:10px">${[["month", "شهر"], ["quarter", "ربع سنة"], ["half", "نص سنة"], ["year", "سنة"]].map(([k, n]) => `<button data-act="fcH" data-k="${k}" class="${H0.h === k ? "on" : ""}">${n}</button>`).join("")}</div>`;
-  const span = days.length ? (new Date(today()) - new Date(days[0])) / 864e5 + 1 : 0;
-  if (days.length < 30 || span < 30) h += `<div class="warnbox">بيانات غير كافية للتنبؤ — محتاجين ٣٠ يوم مبيعات على الأقل (موجود ${days.length} يوم). التنبؤ بيظهر لوحده أول ما البيانات تكفي، بدل ما يطلع رقم مضلل.</div>`;
-  else {
-    const last = n => { let s = 0; for (let i = 1; i <= n; i++) s += byDay[addD(today(), -i)] || 0; return s / n; };
-    const base = 0.6 * last(28) + 0.4 * last(Math.min(90, Math.floor(span))), dowF = [0, 1, 2, 3, 4, 5, 6].map(w => { const v = days.filter(d => new Date(d + "T12:00:00Z").getUTCDay() === w).map(d => byDay[d]); const all = days.map(d => byDay[d]); return v.length >= 3 ? (sum(v, x => x) / v.length) / (sum(all, x => x) / all.length) : 1; });
-    const seas = { 9: 1.25, 10: 1.35, 12: 1.15 }, n = { month: 30, quarter: 91, half: 182, year: 365 }[H0.h]; let tot = 0, ram = 0; const vol = (() => { const v = days.slice(-60).map(d => byDay[d]), m = sum(v, x => x) / v.length; return Math.sqrt(sum(v, x => (x - m) ** 2) / v.length) / (m || 1); })();
-    for (let i = 1; i <= n; i++) { const d = addD(today(), i), f = (dowF[new Date(d + "T12:00:00Z").getUTCDay()] || 1) * (seas[hijriM(d)] || 1); if (seas[hijriM(d)]) ram++; tot += base * f; }
-    const lo = tot * Math.max(0.5, 1 - Math.min(0.35, vol / Math.sqrt(n / 7))), hi = tot * (1 + Math.min(0.35, vol / Math.sqrt(n / 7)));
-    const G = await loadGLAll().catch(() => null), m = G ? pl(G.rows, addD(today(), -89), today()) : null, margin = m && m.net ? m.np / m.net : null;
-    const mtd = days.filter(d => d >= today().slice(0, 7) + "-01").reduce((a, d) => a + byDay[d], 0);
-    h += kpis([["المبيعات المتوقعة", tot, 0, null, `من ${fmt(lo)} لـ ${fmt(hi)}`], ["متوسط يومي مرجعي", base], ["الربح المتوقع", margin != null ? tot * margin : "—", margin == null ? 1 : 0, null, margin != null ? "بهامش آخر ٣ شهور " + pct(margin * 100) : ""], ["الفعلي من أول الشهر", mtd, 0, null, "مقابل المتوقع للشهر " + fmt(base * 30)]]);
-    if (ram) h += `<div class="okbox">الفترة فيها ${ram} يوم من مواسم رمضان والأعياد (بالتقويم الهجري) — اتحسبوا بزيادة متوقعة في البيع.</div>`;
+  const F = S.fc || (S.fc = { h: "month", tab: "total", loc: "all" }); F.tab = F.tab || "total"; F.loc = F.loc || "all";
+  const hist = F.hist && F.histDay === today() ? F.hist : (F.hist = await q("sales", "business_day,total,status,location_id", x => x.gte("business_day", addD(today(), -400)).eq("status", "posted").limit(50000)), F.histDay = today(), F.hist);
+  const inL = l => F.loc === "all" ? myLoc(l) : +F.loc === +l;
+  const dayMap = pred => { const m = {}; hist.filter(s => pred(s.location_id)).forEach(s => { m[s.business_day] = (m[s.business_day] || 0) + +s.total; }); return m; };
+  const byDay = dayMap(inL), n = HZ[F.h], t = today();
+  let h = `<div class="row between" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><div class="tabs">${[["total", "المبيعات"], ["branches", "الفروع"], ["items", "الأصناف"], ["acc", "دقة التوقع"], ["sug", "الاقتراحات"]].map(([k, nm]) => `<button data-act="fcT" data-k="${k}" class="${F.tab === k ? "on" : ""}">${nm}</button>`).join("")}</div>
+    <div class="row" style="gap:6px;flex-wrap:wrap">${F.tab === "total" || F.tab === "branches" ? `<div class="tabs">${[["month", "شهر"], ["quarter", "ربع سنة"], ["half", "نص سنة"], ["year", "سنة"]].map(([k, nm]) => `<button data-act="fcH" data-k="${k}" class="${F.h === k ? "on" : ""}">${nm}</button>`).join("")}</div>` : ""}
+    ${F.tab !== "branches" ? `<select class="inp" id="fcLoc" style="width:auto"><option value="all">كل الأماكن</option>${S.locs.filter(l => myLoc(l.id) && l.kind === "showroom").map(l => `<option value="${l.id}" ${F.loc === String(l.id) ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select>` : ""}</div></div>`;
+  const notEnough = d => `<div class="warnbox">بيانات غير كافية للتنبؤ — محتاجين ٣٠ يوم مبيعات على الأقل (موجود ${Object.keys(d).length} يوم). التنبؤ بيظهر لوحده أول ما البيانات تكفي، بدل ما يطلع رقم مضلل.</div>`;
+
+  if (F.tab === "total") {
+    const f = fcCalc(byDay, t, n, 1);
+    if (!f) return h + notEnough(byDay);
+    const G = await loadGLAll().catch(() => null), m = G ? pl(G.rows, addD(t, -89), t) : null, margin = m && m.net ? m.np / m.net : null;
+    const mtd = Object.keys(byDay).filter(d => d >= t.slice(0, 7) + "-01").reduce((a, d) => a + byDay[d], 0);
+    h += kpis([["المبيعات المتوقعة", f.tot, 0, null, `من ${fmt(f.lo)} لـ ${fmt(f.hi)}`], ["متوسط يومي مرجعي", f.base], ["الربح المتوقع", margin != null ? f.tot * margin : "—", margin == null ? 1 : 0, null, margin != null ? "بهامش آخر ٣ شهور " + pct(margin * 100) : ""], ["الفعلي من أول الشهر", mtd, 0, null, "مقابل المتوقع للشهر " + fmt(f.base * 30)]]);
+    if (f.ram) h += `<div class="okbox">الفترة فيها ${f.ram} يوم من مواسم رمضان والأعياد (بالتقويم الهجري) — اتحسبوا بزيادة متوقعة في البيع.</div>`;
+    // weekly chart: 16 weeks back + up to 13 weeks ahead
+    const wkEnd = t, back = 16, ahead = Math.min(13, Math.floor(n / 7)), labels = [], act = [], fc = [], lo = [], hi = [], w = Math.min(0.35, f.vol);
+    for (let k = back - 1; k >= 0; k--) { const e = addD(wkEnd, -7 * k), s0 = addD(e, -6); let v = 0; for (let d = s0; d <= e; d = addD(d, 1)) v += byDay[d] || 0; labels.push(weekLbl(s0)); act.push(v); fc.push(null); lo.push(null); hi.push(null); }
+    fc[fc.length - 1] = act[act.length - 1]; lo[lo.length - 1] = act[act.length - 1]; hi[hi.length - 1] = act[act.length - 1];
+    for (let k = 0; k < ahead; k++) { const part = f.daily.slice(k * 7, k * 7 + 7); if (part.length < 7) break; const v = sum(part, x => x[1]); labels.push(weekLbl(part[0][0])); act.push(null); fc.push(v); lo.push(v * (1 - w)); hi.push(v * (1 + w)); }
+    h += `<div class="card" style="margin-top:12px"><h3 style="margin:0 0 2px">المبيعات كل أسبوع: اللي فات والمتوقع</h3>${legend([["الفعلي", "var(--v1)"], ["المتوقع", "var(--v1)", 1], ["مدى التوقع", "rgba(127,127,127,.5)"]])}${lineChart("fcTot", labels, [{ name: "الفعلي", vals: act, color: "var(--v1)" }, { name: "المتوقع", vals: fc, color: "var(--v1)", dash: 1 }], [lo, hi, "var(--v1)"])}
+      <p class="dim" style="font-size:12px;margin:6px 0 0">${ahead * 7 < n ? `الرسم بيوري أول ${ahead} أسبوع كامل من الفترة؛ الإجمالي فوق للفترة كلها.` : ""} الأرقام بالجنيه، ومن غير الضريبة لو مسجّل.</p></div>`;
+    return h;
+  }
+  if (F.tab === "branches") {
+    const B = S.locs.filter(l => l.kind === "showroom" && myLoc(l.id)); if (!B.length) return h + `<p class="muted">مفيش معارض.</p>`;
+    const cols = ["var(--v1)", "var(--v2)", "var(--v3)", "var(--v4)"], rows = [], ser = [], labels = [];
+    const groups = B.length <= 4 ? B.map(l => ({ name: l.name, ids: [l.id] })) : B.slice(0, 3).map(l => ({ name: l.name, ids: [l.id] })).concat([{ name: "باقي المعارض", ids: B.slice(3).map(l => l.id) }]);
+    for (let k = 15; k >= 0; k--) labels.push(weekLbl(addD(t, -7 * k - 6)));
+    groups.forEach((g, gi) => { const bd = dayMap(l => g.ids.includes(+l)), f = fcCalc(bd, t, n, 1); let prev = 0; for (let i = 0; i < n; i++) prev += bd[addD(t, -i)] || 0;
+      rows.push([g.name, f ? r2(f.tot) : "—", f ? fmt(f.lo) + " – " + fmt(f.hi) : "بيانات غير كافية", r2(prev), f && prev ? (f.tot > prev ? "+" : "") + pct((f.tot - prev) / prev * 100) : "—"]);
+      const vals = []; for (let k = 15; k >= 0; k--) { const e = addD(t, -7 * k); let v = 0; for (let d = addD(e, -6); d <= e; d = addD(d, 1)) v += bd[d] || 0; vals.push(v); }
+      ser.push({ name: g.name, vals, color: cols[gi] }); });
+    h += `<div class="tw"><table><thead><tr><th>المعرض</th><th class="n">المتوقع (${({ month: "شهر", quarter: "ربع سنة", half: "نص سنة", year: "سنة" })[F.h]})</th><th>المدى</th><th class="n">الفعلي في نفس المدة اللي فاتت</th><th class="n">التغير</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r[0])}</td><td class="n">${typeof r[1] === "number" ? fmt(r[1]) : r[1]}</td><td class="dim">${r[2]}</td><td class="n">${fmt(r[3])}</td><td class="n"><span dir="ltr">${r[4]}</span></td></tr>`).join("")}</tbody></table></div>`;
+    h += `<div class="card" style="margin-top:12px"><h3 style="margin:0 0 2px">مبيعات كل معرض في آخر ١٦ أسبوع</h3>${legend(ser.map(s => [s.name, s.color]))}${lineChart("fcBr", labels, ser)}</div>`;
+    return h;
+  }
+  if (F.tab === "items") {
+    if (!seeCost() && !isTop() && !can("reports")) return h;
+    const raw = F.items && F.itemsDay === today() ? F.items : (F.items = await rpc("fc_item_hist", { p_token: T(), p_weeks: 26 }), F.itemsDay = today(), F.items);
+    const first = Object.keys(byDay).sort()[0], Hw = first ? Math.max(1, Math.min(26, Math.ceil(((new Date(t) - new Date(first)) / 864e5 + 1) / 7))) : 0;
+    if (Hw < 4) return h + `<div class="warnbox">محتاجين ٤ أسابيع مبيعات على الأقل عشان نتوقع لكل صنف (موجود ${Hw}).</div>`;
+    const per = {}; raw.filter(r => inL(r.loc)).forEach(r => { const a = per[r.item_id] || (per[r.item_id] = new Array(27).fill(0)); Object.entries(r.w).forEach(([k, v]) => { a[+k] += +v; }); });
+    const avgW = (a, k) => { const m = Math.min(k, Hw); let s = 0; for (let i = 1; i <= m; i++) s += a[i]; return s / m; };
+    let seas = 0; for (let i = 1; i <= 30; i++) seas += SEAS[hijriM(addD(t, i))] || 1; seas /= 30;
+    const wh = S.locs.filter(l => l.kind === "warehouse").map(l => l.id), stockAt = (id, pred) => S.stock.filter(s => s.item_id === id && pred(s.location_id)).reduce((a, s) => a + +s.qty, 0);
+    const rows = Object.entries(per).map(([id, a]) => { const i = itm(id), rate = Math.max(0, 0.5 * avgW(a, 4) + 0.3 * avgW(a, 13) + 0.2 * avgW(a, 26)), exp = rate / 7 * 30 * seas;
+      const st = stockAt(id, l => F.loc === "all" ? myLoc(l) : +F.loc === +l), last30 = a[1] + a[2] + a[3] + a[4] + a[5] * 2 / 7, cover = rate > 0 ? st / (rate / 7) : Infinity, need = Math.ceil(exp - st);
+      const whSt = F.loc !== "all" ? stockAt(id, l => wh.includes(+l)) : 0;
+      const act = need > 0 ? (F.loc !== "all" && whSt >= need ? `حوّل ${num(need)} من المخزن` : `اشتري حوالي ${num(need)}`) : "كفاية";
+      return [i.name, r2(last30), r2(exp), r2(st), isFinite(cover) ? Math.round(cover) : "—", act, need]; }).filter(r => r[2] > 0.05).sort((x, y) => y[6] - x[6] || y[2] - x[2]);
+    const short = rows.filter(r => r[6] > 0);
+    h += kpis([["أصناف متوقع بيعها", rows.length, 1], ["هتخلص قبل ٣٠ يوم", short.length, 1, short.length ? "--bad" : null], ["قطع محتاجها الشهر الجاي", sum(rows, r => r[2]), 1]].map(k => [k[0], num(Math.round(k[1])), 1, k[3]]));
+    S.rp.last = { title: "توقع الأصناف للـ٣٠ يوم الجايين", head: ["الصنف", "اتباع آخر ٣٠ يوم", "المتوقع الـ٣٠ يوم الجايين", "الرصيد", "يكفي كام يوم", "المطلوب"], rows: rows.map(r => r.slice(0, 6)), sens: [] };
+    h += `<div class="row between" style="margin:10px 0 6px"><p class="dim" style="font-size:12.5px;margin:0">المتوقع = متوسط البيع الأسبوعي (آخر ٤ أسابيع بوزن أكبر، وبعدها ١٣ و٢٦ أسبوع) × ٣٠ يوم${seas > 1.001 ? "، ومعاه زيادة موسم رمضان والأعياد" : ""}. المرتجعات مخصومة.</p><button class="btn sm" data-act="rpExp">تصدير</button></div>`;
+    h += `<div class="tw"><table><thead><tr><th>الصنف</th><th class="n">اتباع آخر ٣٠ يوم</th><th class="n">المتوقع الـ٣٠ يوم الجايين</th><th class="n">الرصيد</th><th class="n">يكفي كام يوم</th><th>المطلوب</th></tr></thead><tbody>${rows.slice(0, 300).map(r => `<tr><td>${esc(r[0])}</td><td class="n">${num(r[1])}</td><td class="n"><b>${num(r[2])}</b></td><td class="n">${num(r[3])}</td><td class="n">${r[4] === "—" ? "—" : `<span style="color:var(${r[4] < 30 ? "--bad" : "--muted"})">${num(r[4])}</span>`}</td><td>${r[6] > 0 ? chip(r[5], "warn") : `<span class="dim">${r[5]}</span>`}</td></tr>`).join("") || empty(6, "مفيش مبيعات أصناف في آخر ٢٦ أسبوع.")}</tbody></table></div>`;
+    return h;
+  }
+  if (F.tab === "acc") {
+    const rows = [], M0 = t.slice(0, 7) + "-01";
+    for (let k = 6; k >= 1; k--) { const ms = new Date(Date.UTC(+M0.slice(0, 4), +M0.slice(5, 7) - 1 - k, 1)).toISOString().slice(0, 10), me = addD(new Date(Date.UTC(+ms.slice(0, 4), +ms.slice(5, 7), 1)).toISOString().slice(0, 10), -1), len = Math.round((new Date(me) - new Date(ms)) / 864e5) + 1;
+      const f = fcCalc(byDay, ms, len, 0); if (!f) continue; let a = 0; for (let d = ms; d <= me; d = addD(d, 1)) a += byDay[d] || 0;
+      rows.push({ m: new Date(ms + "T12:00:00Z").toLocaleDateString("ar-EG", { month: "long", year: "numeric" }), f: f.tot, lo: f.lo, hi: f.hi, a, err: a ? (a - f.tot) / a * 100 : null }); }
+    if (!rows.length) return h + `<div class="warnbox">لسه مفيش شهر كامل قبله ٣٠ يوم مبيعات عشان نقيس عليه. القياس بيظهر لوحده بعد أول شهر كامل.</div>`;
+    const ok = rows.filter(r => r.err != null), mape = ok.length ? sum(ok, r => Math.abs(r.err)) / ok.length : null, inside = rows.filter(r => r.a >= r.lo && r.a <= r.hi).length;
+    h += kpis([["متوسط الدقة", mape != null ? pct(Math.max(0, 100 - mape)) : "—", 1, mape != null && mape > 25 ? "--bad" : null, "١٠٠٪ ناقص متوسط الفرق"], ["شهور الفعلي جوه المدى", `${num(inside)} من ${num(rows.length)}`, 1], ["متوسط الفرق", mape != null ? pct(mape) : "—", 1]]);
+    h += `<div class="okbox" style="margin-top:8px">في أول كل شهر من الشهور دي، حسبنا التوقع بنفس الطريقة بالمبيعات اللي كانت موجودة قبله بس، وقارنّاه باللي اتباع فعلًا. كده تعرف تثق في رقم التوقع قد إيه.</div>`;
+    h += `<div class="tw" style="margin-top:8px"><table><thead><tr><th>الشهر</th><th class="n">المتوقع</th><th>المدى</th><th class="n">الفعلي</th><th class="n">الفرق</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.m)}</td><td class="n">${fmt(r.f)}</td><td class="dim">${fmt(r.lo)} – ${fmt(r.hi)}</td><td class="n">${fmt(r.a)}</td><td class="n"><span dir="ltr">${r.err == null ? "—" : (r.err > 0 ? "+" : "") + pct(r.err)}</span></td><td>${r.a >= r.lo && r.a <= r.hi ? chip("جوه المدى", "ok") : chip(r.a > r.hi ? "أعلى من المتوقع" : "أقل من المتوقع", "warn")}</td></tr>`).join("")}</tbody></table></div>`;
+    h += `<div class="card" style="margin-top:12px"><h3 style="margin:0 0 2px">المتوقع مقابل الفعلي</h3>${legend([["الفعلي", "var(--v1)"], ["المتوقع", "var(--v2)", 1]])}${lineChart("fcAcc", rows.map(r => r.m), [{ name: "الفعلي", vals: rows.map(r => r.a), color: "var(--v1)" }, { name: "المتوقع", vals: rows.map(r => r.f), color: "var(--v2)", dash: 1 }], [rows.map(r => r.lo), rows.map(r => r.hi), "var(--v2)"])}</div>`;
+    return h;
   }
   /* suggestions: local rules, each with its reason */
-  const sug = [], t = today();
-  S.items.forEach(i => { const st = S.stock.filter(s => s.item_id === i.id && inLoc(s.location_id)).reduce((a, s) => a + +s.qty, 0); if (+i.min_qty > 0 && st <= +i.min_qty) sug.push(["warn", "اطلب تاني: " + i.name, `الرصيد ${num(st)} وصل للحد الأدنى ${num(i.min_qty)}.`]); });
+  const D = await loadRep(), sug = [], inS = l => F.loc === "all" ? myLoc(l) : +F.loc === +l;
+  S.items.forEach(i => { const st = S.stock.filter(s => s.item_id === i.id && inS(s.location_id)).reduce((a, s) => a + +s.qty, 0); if (+i.min_qty > 0 && st <= +i.min_qty) sug.push(["warn", "اطلب تاني: " + i.name, `الرصيد ${num(st)} وصل للحد الأدنى ${num(i.min_qty)}.`]); });
   const sold = {}; D.moves.filter(mv => mv.kind === "sale").forEach(mv => { sold[mv.item_id] = 1; }); const stale = S.items.filter(i => !sold[i.id] && S.stock.some(s => s.item_id === i.id && +s.qty > 0));
   if (stale.length) sug.push(["info", `${stale.length} صنف ما اتباعش في آخر ٣ شهور`, "فكّر في عرض تصريف أو نقلهم لمعرض تاني — التفاصيل في «ظهور الأصناف»."]);
   const mo = D.cats.map(c => [c, sum(D.exps.filter(e => e.status === "approved" && e.category_id === c.id && e.exp_date >= t.slice(0, 7) + "-01"), e => e.amount)]).filter(([c, a]) => +c.budget && a > +c.budget);
   mo.forEach(([c, a]) => sug.push(["bad", "مصروف فوق الميزانية: " + c.name, `اتصرف ${fmt(a)} من ميزانية ${fmt(c.budget)} الشهر ده.`]));
   const soon = D.pur.filter(p => p.due_date >= t && p.due_date <= addD(t, 7)); if (soon.length) sug.push(["warn", `${soon.length} فاتورة مورد مستحقة خلال أسبوع`, "جهّز السيولة — الإجمالي " + fmt(sum(soon, p => p.total)) + "."]);
-  h += `<h3 style="margin-top:14px">الاقتراحات</h3>${sug.length ? `<div class="stack" style="gap:6px">${sug.slice(0, 20).map(s => `<div class="${s[0] === "bad" ? "warnbox" : "okbox"}"><b>${esc(s[1])}</b><br><span class="dim">${esc(s[2])}</span></div>`).join("")}</div>` : `<p class="muted">مفيش اقتراحات دلوقتي.</p>`}<p class="dim" style="font-size:12px">الاقتراحات بقواعد ثابتة جوه السيستم، وكل اقتراح معاه سببه.</p>`;
+  h += `${sug.length ? `<div class="stack" style="gap:6px">${sug.slice(0, 20).map(s => `<div class="${s[0] === "bad" ? "warnbox" : "okbox"}"><b>${esc(s[1])}</b><br><span class="dim">${esc(s[2])}</span></div>`).join("")}</div>` : `<p class="muted">مفيش اقتراحات دلوقتي.</p>`}<p class="dim" style="font-size:12px">الاقتراحات بقواعد ثابتة جوه السيستم، وكل اقتراح معاه سببه. توقع كل صنف وإيه اللي محتاج يتشترى في تبويب «الأصناف».</p>`;
   return h;
 }
 /* ---------- final reports ---------- */
@@ -339,7 +489,7 @@ async function makeFinal(ed) { const { from, to } = S.per, G = await loadGLAll()
     ["قائمة الدخل لكل معرض", tb(["المعرض", "صافي المبيعات", "مجمل الربح", "المصروفات", "صافي الربح"], byLoc)], ["التدفق النقدي", tb(["البند", "المبلغ"], [["تشغيلي", C.op], ["استثماري", C.inv], ["تمويلي (الشركاء والقروض)", C.partners + C.loans]])],
     ["المخزون", `<p>القيمة بالتكلفة ${fmt(sum(val.rows, r => r[3]))} وبسعر البيع ${fmt(sum(val.rows, r => r[4]))}.</p>${tb(val.head, val.rows.slice(0, 20))}`], ["الموردين", tb(["المورد", "النوع", "أول المدة", "فواتير", "مدفوع", "الرصيد", "حد الائتمان"], sup)], ["المصروفات مقابل الميزانية", tb(["البند", "المجموعة", "الفعلي", "الميزانية", "النسبة"], exp)]];
   if (ed === "audit") { const jr = G.rows.filter(r => r[0] >= from && r[0] <= to); parts.push(["ميزان المراجعة", tb(["الحساب", "مدين", "دائن"], [...groupBy(jr, r => r[3])].map(([k, a]) => [k + " · " + ((G.accts.find(x => x.code === k) || {}).name || ""), r2(sum(a, r => r[4])), r2(sum(a, r => r[5]))]))]); }
-  parts.push(["التوقعات", (await forecastHTML()).replace(/<button[^>]*>.*?<\/button>/g, "").replace(/<div class="tabs"[^>]*>.*?<\/div>/, "")]);
+  parts.push(["التوقعات", (await (async () => { const k = S.fc && S.fc.tab; S.fc = Object.assign(S.fc || { h: "month" }, { tab: "total" }); const x = await forecastHTML(); S.fc.tab = k || "total"; return x; })()).replace(/<button[^>]*>.*?<\/button>/g, "").replace(/<div class="tabs"[^>]*>.*?<\/div>/g, "").replace(/<select[\s\S]*?<\/select>/g, "")]);
   const html = `<div class="cover" style="text-align:center;padding:40mm 0">${M.LOGO() ? `<div style="margin-bottom:10mm">${M.logoImg("30mm", "max-width:90mm")}</div>` : ""}<h1 style="font-size:28px">${esc(st.name || "")}</h1><h2>التقرير النهائي · ${ed === "audit" ? "نسخة المراجعة" : "نسخة الشركاء"}</h2><p>${from} ← ${to}</p>${prov ? `<p style="color:#b00;font-size:20px;font-weight:700">مبدئي — ${open} يوم/معرض لسه ما اتقفلش</p>` : ""}<p style="color:#666">اتعمل ${new Date().toLocaleString("ar-EG")} بواسطة ${esc(S.sess.staff.name)}</p></div>
    <section><h2>الفهرس</h2><ol>${parts.map(p => `<li>${p[0]}</li>`).join("")}</ol></section>${parts.map((p, i) => sec(i + 1, p[0], p[1])).join("")}`;
   const id = await rpc("final_report_save", { p_token: T(), p: { from, to, edition: ed, provisional: prov, html } });
@@ -416,6 +566,7 @@ window.MZX = async function (k, a) {
   if (k === "rpSel") { S.rp.id = id; render(); }
   else if (k === "rpExp") { const L = S.rp.last; if (!L) return toast("استنى التقرير يحمّل.", true), true; window.MZEXP ? window.MZEXP(L.title, L.head, L.rows, L.sens) : M.xlsOut(L.title + ".xlsx", L.title.slice(0, 30), [L.head, ...L.rows]); }
   else if (k === "fcH") { S.fc.h = a.dataset.k; render(); }
+  else if (k === "fcT") { S.fc.tab = a.dataset.k; render(); }
   else if (k === "frMake") wrap(async () => { const r = await makeFinal(a.dataset.ed); busy(a, false); $("#frBox").innerHTML = `<div class="okbox">اتحفظت النسخة #${r.id} في الأرشيف${r.prov ? " — مبدئية" : ""} · البصمة <span class="num">${esc(r.hash.slice(0, 24))}…</span></div>`; printFinal(r.html, r.hash, r.prov); $("#frBox").insertAdjacentHTML("beforeend", `<button class="btn sm" data-act="frPdf" data-id="${r.id}" style="margin-top:8px">PDF بباسورد</button>`); }, null, "#frBox");
   else if (k === "frArch") wrap(async () => { const L = await q("final_reports", "id,period_from,period_to,edition,provisional,hash,created_by,created_at", x => x.order("id", { ascending: false }).limit(100)); busy(a, false); await loadDir();
     $("#frBox").innerHTML = `<div class="tw"><table><thead><tr><th>#</th><th>الفترة</th><th>النسخة</th><th>اتعمل</th><th>البصمة</th><th></th></tr></thead><tbody>${L.map(r => `<tr><td class="num">${r.id}</td><td class="num">${r.period_from} ← ${r.period_to}</td><td>${r.edition === "audit" ? "المراجعة" : "الشركاء"}${r.provisional ? " " + chip("مبدئي", "warn") : ""}</td><td>${esc(who(r.created_by))}<br><span class="dim num" style="font-size:12px">${dt(r.created_at)}</span></td><td class="num dim" style="font-size:11px">${esc(r.hash.slice(0, 16))}</td><td class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm" data-act="frOpen" data-id="${r.id}">فتح</button><button class="btn sm ghost" data-act="frPdf" data-id="${r.id}">PDF بباسورد</button></td></tr>`).join("") || empty(6, "الأرشيف فاضي.")}</tbody></table></div>`; });

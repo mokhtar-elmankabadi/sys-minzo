@@ -76,7 +76,7 @@ function resCancelModal(r) {
 function resToPos(r) {
   if (+r.loc !== +S.sess.device.location_id) return toast(`الحجز ده في ${locName(r.loc)} — كمّله من جهاز هناك.`, true);
   P.cart = (r.lines || []).map(l => ({ id: l.item_id, qty: +l.qty, ...(((S.items.find(i => i.id === l.item_id) || {}).serial_required) ? { serial: "" } : {}) }));
-  P.cust = { name: r.customer || "", phone: r.phone || "" }; P.res = { id: r.id, no: r.no, deposit: +r.deposit, customer: r.customer };
+  P.cust = { name: r.customer || "", phone: r.phone || "" }; P.quote = null; P.res = { id: r.id, no: r.no, deposit: +r.deposit, customer: r.customer };
   P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" }; P.coupon = null; go("pos");
 }
 
@@ -165,7 +165,7 @@ window.MZX = async function (k, a) {
   if (k === "qtShow") { qtShow(qById(a.dataset.id)); return true; }
   if (k === "qtToPos") { const q = qById(a.dataset.id); if (!q) return true; closeModal();
     P.cart = (q.lines || []).filter(l => S.items.some(i => i.id === l.item_id)).map(l => ({ id: l.item_id, qty: +l.qty, ...(((S.items.find(i => i.id === l.item_id) || {}).serial_required) ? { serial: "" } : {}) }));
-    P.cust = { name: q.customer_name || "", phone: q.customer_phone || "" }; P.res = null; go("pos"); toast(`اتحمّل عرض السعر ${q.no} — الأسعار والعروض هتتحسب على النهارده.`); return true; }
+    P.cust = { name: q.customer_name || "", phone: q.customer_phone || "" }; P.res = null; P.quote = q.id; go("pos"); toast(`اتحمّل عرض السعر ${q.no} — الأسعار والعروض هتتحسب على النهارده.`); return true; }
   if (k === "cpOn") { const v = ($("#posCp").value || "").trim(); if (!v) return true; busy(a, true);
     try { P.coupon = await rpc("coupon_check", { p_token: T(), p_code: v, p_phone: (P.cust.phone || "").trim() }); render(); }
     catch (e) { toast(errText(e), true); busy(a, false); }

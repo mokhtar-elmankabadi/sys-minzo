@@ -32,7 +32,7 @@ const ERR = {
   OFFER_RETURN_BLOCKED: "المرتجع ده من عرض على مجموعة: لو رجع القطعة دي لوحدها الخصم هيتلغي على الباقي والعميل هيبقى عليه فلوس. خلّيه يرجّع العرض كله أو يبدّل القطعة بقطعة تانية.", BAD_LINK: "فيه لينك مش مظبوط — اتأكد إنه بيبدأ بـ https:// والأرقام صح.", NO_RECIPIENTS: "مفيش عملاء ليهم موبايل في الاختيار ده.", MESSAGE_REQUIRED: "اكتب الرسالة.", NAME_TAKEN: "الاسم ده مستخدم قبل كده.",
   WRONG_PIN: "الرمز غلط.", USE_EMAIL: "الجهاز ده جهاز شخصي — ادخل بالإيميل والباسورد.", NEED_PASSWORD: "ادخل بالإيميل والباسورد تاني.", EMAIL_DISABLED: "الدخول بالإيميل مقفول لحسابك — كلّم المالك.", PENDING: "حسابك لسه مستني المالك يفعّله.",
   BAD_EMAIL: "الإيميل مش مظبوط.", WEAK_PASSWORD: "الباسورد لازم يكون 8 حروف أو أكتر.", EMAIL_TAKEN: "الإيميل ده عليه حساب قبل كده.", ALREADY_LINKED: "الموظف ده مربوط بإيميل خلاص.", NOT_LINKED: "الموظف ده مش مربوط بإيميل.",
-  STAFF_INACTIVE: "الموظف موقوف.", TOO_MANY: "طلبات كتير — جرّب بعد ساعة.", AUTH_ERROR: "حصلت مشكلة في عمل الحساب — جرّب تاني.", NAME_REQUIRED: "اكتب الاسم.", BAD_VALUE: "القيمة مش مظبوطة.",
+  STAFF_INACTIVE: "الموظف موقوف.", TOO_MANY: "طلبات كتير — جرّب بعد ساعة.", AUTH_ERROR: "حصلت مشكلة في عمل الحساب — جرّب تاني.", NAME_REQUIRED: "اكتب الاسم.", BAD_TIERS: "الشرايح لازم تبقى أرقام صحيحة: الحد أكبر من صفر، والنسبة من ١ لـ ١٠٠، ومن غير تكرار.", BAD_VALUE: "القيمة مش مظبوطة.",
   "Invalid login credentials": "الإيميل أو الباسورد غلط.", LOCKED: "الجهاز اتقفل بعد 5 محاولات غلط. جرّب بعد 5 دقايق.", WRONG_LOCATION: "الرمز ده لموظف في فرع تاني.",
   SESSION_EXPIRED: "انتهت الجلسة — ادخل برمزك تاني.", DEVICE_NOT_APPROVED: "الجهاز لسه مستني الاعتماد.", DEVICE_NOT_REGISTERED: "الجهاز مش متسجّل.",
   PIN_LENGTH: "الرمز الرقمي من ٤ لـ ٨ أرقام.", PIN_REPEATED: "مينفعش كل الأرقام تبقى زي بعض.", PIN_SEQUENCE: "مينفعش أرقام متسلسلة زي ١٢٣٤.",
@@ -667,7 +667,7 @@ V.pos = () => {
   if (P.shift === undefined) { setTimeout(posShift, 0); return h + `<div class="spin"></div>`; }
   const isSeller = S.sess.role.id === "seller";
   if (!P.shift && !isSeller) return h + `<div class="card lux rise" style="max-width:480px"><h3>مفيش وردية مفتوحة على درج ${esc(locName(loc))}</h3><div class="field"><label>رصيد الدرج في أول الوردية (الفكّة)</label><input class="inp num" id="shFloat" type="number" min="0" value="0"></div><button class="btn gold" style="margin-top:10px" data-act="shOpen">فتح وردية</button></div>`;
-  const q = qGet(), c = cartCalc(), max = +S.sess.role.max_discount_pct || 0;
+  const q = qGet(), c = cartCalc(), max = Math.max(+S.sess.role.max_discount_pct || 0, P.gd ? +P.gd.pct : 0);
   const av = i => (window.MZAV ? window.MZAV(i, S.sess.device.location_id) : "on");
   const items = S.items.filter(i => av(i) !== "hidden" && (P.dep === "all" || i.department_id === +P.dep) && (!P.q || norm(srch(i)).includes(norm(P.q))));
   h = `<div class="ph"><div><div class="eyebrow">${esc(locName(loc))}${P.shift ? ` · وردية ${esc(P.shift.cashier_name)} من ${new Date(P.shift.opened_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}` : " · البائع بيجهّز الفاتورة للكاشير"}${P.heldNo ? ` · <b>${esc(P.heldNo)}</b>` : ""}</div><h1>${NAME.pos}</h1></div><div class="acts">${q.length ? `<span class="chip warn">${q.length} فاتورة محفوظة على الجهاز</span>` : ""}${isSeller ? "" : `<button class="btn sm" data-act="heldList">المعلّقة</button><button class="btn sm" data-act="shHand">تسليم الوردية</button>`}</div></div>`;
@@ -736,7 +736,7 @@ async function posPay(btn) {
   if (c.paid < c.total - 0.004) return err("المدفوع أقل من المطلوب.");
   const nonCash = c.paid - (+P.pay.cash || 0); if (nonCash > c.total + 0.004) return err(c.dep > c.total ? "العربون أكبر من الفاتورة — ألغي الحجز ورجّع العربون بدل كده." : "الفيزا والمحافظ أكتر من المطلوب — الباقي بيرجع من النقدي بس.");
   if (P.res && !navigator.onLine) return err("تكميل الحجز محتاج إنترنت.");
-  const p = { client_uuid: uuid(), lines: P.cart.map(l => ({ item_id: l.id, qty: l.qty, serial: l.serial || null, cut_waste_m: l.waste || null })), discount_pct: P.disc, offers_seen: c.ofrOk, approver_pin: P.disc > (+S.sess.role.max_discount_pct || 0) ? P.pin : null,
+  const p = { client_uuid: uuid(), lines: P.cart.map(l => ({ item_id: l.id, qty: l.qty, serial: l.serial || null, cut_waste_m: l.waste || null })), discount_pct: P.disc, offers_seen: c.ofrOk, approver_pin: P.disc > Math.max(+S.sess.role.max_discount_pct || 0, P.gd ? +P.gd.pct : 0) ? P.pin : null,
     customer: P.cust.phone ? { name: P.cust.name.trim(), phone: P.cust.phone.trim() } : null, seller_id: P.seller || null,
     payments: Object.entries(P.pay).filter(([, v]) => +v > 0).map(([m, v]) => m === "inst" ? { method: m, amount: +v, plan_id: +P.plan } : { method: m, amount: +v }).concat(P.res ? [{ method: "deposit", amount: +P.res.deposit }] : []), held_id: P.heldId || null,
     coupon: P.coupon && !c.cpLow ? P.coupon.code : null, reservation_id: P.res ? P.res.id : null };
@@ -763,7 +763,7 @@ async function posDone(r, c) {
   const lines = P.cart.map(l => ({ n: l.it.name, q: l.qty, u: UNITS[l.it.unit], p: l.it.sale_price, sn: l.serial, od: l.od, on: l.on }));
   const pays = Object.entries(P.pay).filter(([, v]) => +v > 0).concat(P.res ? [["deposit", P.res.deposit]] : []), cpDone = P.coupon && +r.coupon_disc > 0 ? P.coupon.code : null; P.planDone = P.plan; P.coupon = null; P.res = null;
   const custName = P.cust.phone ? P.cust.name.trim() : "", hasCust = !!P.cust.phone;
-  P.cart = []; P.disc = 0; P.pin = ""; P.cust = { name: "", phone: "" }; P.seller = ""; P.plan = ""; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" };
+  P.cart = []; P.disc = 0; P.pin = ""; P.gd = null; P.cust = { name: "", phone: "" }; P.seller = ""; P.plan = ""; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" };
   // which visit is this for the customer → the welcome line on the receipt (never holds the receipt more than 2.5 s)
   let visit = null;
   if (hasCust && !r.offline && r.id) visit = await Promise.race([rpc("sale_visit", { p_token: T(), p_sale: r.id }).catch(() => null), new Promise(res => setTimeout(() => res(null), 2500))]);
@@ -859,7 +859,7 @@ async function opsClick(k, a) {
   else if (k === "posAdd") { posAdd(a.dataset.id); render(); }
   else if (k === "posQty") { const l = P.cart[+a.dataset.n]; l.qty += +a.dataset.d; if (l.qty <= 0) P.cart.splice(+a.dataset.n, 1); render(); }
   else if (k === "posDel") { P.cart.splice(+a.dataset.n, 1); render(); }
-  else if (k === "posClear") { P.cart = []; P.disc = 0; P.plan = ""; P.coupon = null; P.res = null; P.quote = null; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" }; render(); }
+  else if (k === "posClear") { P.cart = []; P.disc = 0; P.plan = ""; P.coupon = null; P.res = null; P.quote = null; P.gd = null; P.heldId = null; P.heldNo = null; P.pay = { cash: "", card: "", insta: "", wallet: "", inst: "" }; render(); }
   else if (k === "payAll") { const c = cartCalc(); P.pay = { cash: String(Math.max(0, Math.round((c.total - c.dep) * 100) / 100)), card: "", insta: "", wallet: "", inst: "" }; P.plan = ""; render(); }
   else if (k === "posPay") posPay(a);
   else if (k === "rcptPrint") { if (window.MZPA && MZPA.can("sale")) { MZPA.receipt($("#rcpt").innerHTML).then(() => toast("اتبعت للطابعة.")).catch(e => { MZPA.st.ok = false; toast("الطباعة الصامتة فشلت — دوس «طباعة» تاني وهتفتح نافذة الطباعة.", true); }); return; } const w = window.open("", "_blank", "width=380,height=600"); if (!w) return toast("المتصفح منع نافذة الطباعة.", true); w.document.write(`<html dir="rtl"><head><title>إيصال</title><style>body{font-family:Tahoma,Arial;font-size:12px;width:${{ "58": "50mm", "80": "72mm", "A5": "130mm", "A4": "190mm" }[RC().size] || "72mm"};margin:0 auto}.r{display:flex;justify-content:space-between;gap:8px;margin:3px 0}.dim{color:#666}.hr{border-top:1px dashed #000}</style></head><body>${$("#rcpt").innerHTML}<script>print();setTimeout(()=>close(),500)<\/script></body></html>`); w.document.close(); }
@@ -1319,14 +1319,17 @@ function comSync() { const F = S.com && S.com.cfg; if (!F || !$("[data-act=comSa
   document.querySelectorAll("[data-ctg]").forEach(e => { if (e.value === "") delete F.targets[e.dataset.ctg]; else F.targets[e.dataset.ctg] = +e.value; }); }
 
 /* ---------- offers ---------- */
-const OFK = { pct: "خصم نسبة %", amount: "خصم مبلغ", bxgy: "اشترِ X واحصل على Y", nth: "التاني بخصم", bundle: "طقم بسعر ثابت", gift: "هدية مع الشراء" };
-const OFS = { item: "أصناف", group: "مجموعات", dept: "أقسام", invoice: "الفاتورة كلها", bundle: "أصناف الطقم" };
+const OFK = { pct: "خصم نسبة %", amount: "خصم مبلغ", bxgy: "اشترِ X واحصل على Y", nth: "التاني بخصم", bundle: "طقم بسعر ثابت", gift: "هدية مع الشراء", fixed: "سعر ثابت للقطعة", tier: "خصم متدرّج بالكمية", mixmatch: "أي عدد قطع بمبلغ ثابت", cross: "اشتري من (أ) وخد خصم على (ب)", spend_gift: "هدية لما الفاتورة تعدّي مبلغ", inv_tier: "خصم فاتورة متدرّج" };
+const OFS = { item: "أصناف", group: "مجموعات", dept: "أقسام", invoice: "الفاتورة كلها", bundle: "أصناف الطقم", mix: "أصناف ومجموعات وأقسام" };
+const refName = r => { const t = r.slice(0, 2), v = r.slice(2); return t === "g:" ? "مجموعة " + ((S.groups.find(g => String(g.id) === v) || {}).name || "؟") : t === "d:" ? "قسم " + ((S.depts.find(d => String(d.id) === v) || {}).name || "؟") : t === "i:" ? ((S.items.find(i => i.id === v) || {}).name || "؟") : ((S.items.find(i => i.id === r) || {}).name || "؟"); };
 const OFST = { active: ["شغّال", "ok"], paused: ["متوقف مؤقتًا", "warn"], ended: ["انتهى", "plain"] };
 const DAYS = ["الأحد", "الاتنين", "التلات", "الأربع", "الخميس", "الجمعة", "السبت"];
 async function loadOffers() { const o = await q("offers", "*", x => x.order("status").order("priority", { ascending: false }).order("id", { ascending: false })); S.ofs = { list: o, tab: (S.ofs && S.ofs.tab) || "active" }; return S.ofs; }
 const ofTarget = o => { const nm = o.scope === "dept" ? id => (S.depts.find(d => String(d.id) === id) || {}).name : o.scope === "group" ? id => (S.groups.find(g => String(g.id) === id) || {}).name : id => (S.items.find(i => i.id === id) || {}).name;
+  if (o.scope === "mix") return (o.refs || []).map(r => esc(refName(r))).join("، ") + (o.kind === "cross" ? `<br><span class="dim">الخصم على: ${(o.refs2 || []).map(r => esc(refName(r))).join("، ")}</span>` : "");
   return o.scope === "invoice" ? `الفاتورة${+o.min_total ? " من " + fmt(o.min_total) : ""}` : (o.refs || []).map(r => esc(nm(r) || "؟")).join("، "); };
-const ofValue = o => o.kind === "pct" ? `${+o.value}%` : o.kind === "amount" ? (o.scope === "invoice" ? fmt(o.value) : fmt(o.value) + " للقطعة") : o.kind === "nth" ? `كل ${+o.buy_qty} ← ${+o.get_qty} بخصم ${+o.value}%` : o.kind === "bxgy" ? `اشترِ ${+o.buy_qty} واحصل على ${+o.get_qty} ببلاش` : o.kind === "bundle" ? `الطقم بـ ${fmt(o.value)}` : `كل ${+o.buy_qty || 1} ← ${+o.get_qty || 1} ${esc((S.items.find(i => i.id === o.gift_item) || {}).name || "")} هدية`;
+const ofTiers = o => (o.tiers || []).slice().sort((a, b) => a.min - b.min).map(t => o.kind === "inv_tier" ? `من ${fmt(t.min)}: ${+t.pct}%` : `${+t.min} قطع: ${+t.pct}%`).join(" · ");
+const ofValue = o => o.kind === "fixed" ? `القطعة بـ ${fmt(o.value)}` : o.kind === "tier" || o.kind === "inv_tier" ? ofTiers(o) : o.kind === "mixmatch" ? `أي ${+o.buy_qty} بـ ${fmt(o.value)}` : o.kind === "cross" ? `كل ${+o.buy_qty} ← ${+o.get_qty} بخصم ${+o.value}%` : o.kind === "spend_gift" ? `فوق ${fmt(o.min_total)} ← ${+o.get_qty || 1} ${esc((S.items.find(i => i.id === o.gift_item) || {}).name || "")} هدية` : o.kind === "pct" ? `${+o.value}%` : o.kind === "amount" ? (o.scope === "invoice" ? fmt(o.value) : fmt(o.value) + " للقطعة") : o.kind === "nth" ? `كل ${+o.buy_qty} ← ${+o.get_qty} بخصم ${+o.value}%` : o.kind === "bxgy" ? `اشترِ ${+o.buy_qty} واحصل على ${+o.get_qty} ببلاش` : o.kind === "bundle" ? `الطقم بـ ${fmt(o.value)}` : `كل ${+o.buy_qty || 1} ← ${+o.get_qty || 1} ${esc((S.items.find(i => i.id === o.gift_item) || {}).name || "")} هدية`;
 const ofWhen = o => { const d = x => new Date(x).toLocaleDateString("ar-EG", { day: "numeric", month: "short" }); return `${d(o.starts_at)}${o.ends_at ? " ← " + d(o.ends_at) : " · مفتوح"}${o.days && o.days.length ? "<br>" + o.days.map(x => DAYS[x]).join("، ") : ""}${o.hour_from ? `<br><span class="num">${String(o.hour_from).slice(0, 5)}–${String(o.hour_to).slice(0, 5)}</span>` : ""}${o.locs && o.locs.length ? "<br>" + o.locs.map(locName).map(esc).join("، ") : ""}`; };
 V.offers = () => { let h = header(); const D = S.ofs; if (!D) { setTimeout(() => loadOffers().then(() => S.route === "offers" && render()).catch(e => toast(errText(e), true)), 0); return h + `<div class="spin"></div>`; }
   const canA = isOwnerGm() || can("offers", "a"), canE = isOwnerGm() || can("offers", "e"), now = new Date().toISOString();
@@ -1341,7 +1344,7 @@ V.offers = () => { let h = header(); const D = S.ofs; if (!D) { setTimeout(() =>
    <div class="okbox rise">العروض مش بتتجمّع: كل صنف بياخد عرض واحد بس — الأعلى أولوية. عرض الفاتورة بيتطبّق على الأصناف اللي ما عليهاش عرض. ومينفعش عرضين بنفس الأولوية على نفس الصنف في نفس الوقت. لو حصل أي خطأ في حساب العرض، البيع بيكمل بالسعر العادي.</div>`;
   return h; };
 const dtl = x => { if (!x) return ""; const d = new Date(x), z = n => String(n).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
-function ofModal(o, copy) { const x = o ? { ...o, refs: [...(o.refs || [])], locs: [...(o.locs || [])], days: [...(o.days || [])] } : { name: "", kind: "pct", scope: "item", refs: [], value: 10, buy_qty: 2, get_qty: 1, gift_item: null, min_total: null, locs: [], starts_at: new Date().toISOString(), ends_at: null, days: [], hour_from: null, hour_to: null, priority: 1, note: "" };
+function ofModal(o, copy) { if (window.MZOF) return window.MZOF(o, copy); const x = o ? { ...o, refs: [...(o.refs || [])], locs: [...(o.locs || [])], days: [...(o.days || [])] } : { name: "", kind: "pct", scope: "item", refs: [], value: 10, buy_qty: 2, get_qty: 1, gift_item: null, min_total: null, locs: [], starts_at: new Date().toISOString(), ends_at: null, days: [], hour_from: null, hour_to: null, priority: 1, note: "" };
   if (copy) { delete x.id; x.name = "نسخة من " + x.name; x.starts_at = new Date().toISOString(); x.ends_at = null; }
   S.of = x; ofDraw(); }
 function ofDraw(check) { const x = S.of, scopes = x.kind === "bundle" ? ["bundle"] : x.kind === "pct" || x.kind === "amount" ? ["item", "group", "dept", "invoice"] : ["item", "group", "dept"];
